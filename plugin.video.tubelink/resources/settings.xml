@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<settings>
+    <category label="General">
+        <setting
+            id="quality"
+            type="select"
+            label="Video Quality"
+            values="360p|480p|720p|1080p"
+            default="2"
+        />
+        <setting
+          id="country"
+          type="select"
+          label="Choose your region"
+          values="United States|United Kingdom|Canada|Australia|Germany|France|Italy|Spain|Japan|China|India|Brazil|Mexico|Russia|South Korea|Netherlands|Sweden|Norway|Denmark|Finland|Poland|Turkey|South Africa|Argentina|Egypt|Saudi Arabia|UAE|Singapore|Thailand|Vietnam|Philippines|Indonesia|Malaysia|New Zealand|Ireland|Portugal|Greece|Belgium|Austria|Switzerland|Czech Republic|Romania|Hungary|Israel|Nigeria|Kenya|Morocco|Pakistan|Bangladesh|Sri Lanka|Chile|Colombia|Peru|Venezuela|Ukraine"
+          default="0"
+          />
+    </category>
+</settings>
