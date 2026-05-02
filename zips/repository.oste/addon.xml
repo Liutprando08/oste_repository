@@ -3,7 +3,7 @@
   <extension point="xbmc.addon.repository">
     <dir>
       <info compressed="true">https://liutprando08.github.io/zips/addons.xml</info>
-      <checksum>https://liutprando08.github.io/zips/addons.xml.md5</checksum>
+      <checksum>https://liutprando08.github.io/zips/addons.zip.md5</checksum>
       <datadir zip="true">https://liutprando08.github.io/zips/</datadir>
     </dir>
   </extension>
