@@ -12,7 +12,7 @@
     <summary>Personal project from someone with too much free time</summary>
     <platform>all</platform>
   </extension>
-</addon><addon id="plugin.video.tubelink" name="tubelink" version="1.0.3" provider-name="Liutprando08">
+</addon><addon id="plugin.video.tubelink" name="tubelink" version="1.0.4" provider-name="Liutprando08">
     <requires>
     <import addon="xbmc.python" version="3.0.0" />
     </requires>
