@@ -139,40 +139,46 @@ def mainMenu():
     xbmcplugin.endOfDirectory(HANDLE)
 
 
-def search():
-    query = xbmcgui.Dialog().input("Search")
+def search(query=None, page=1):
     if not query:
-        xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
-        return
-
+        query = xbmcgui.Dialog().input("Search")
+        if not query:
+            xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
+            return
     try:
+        offset = (page - 1) * 20
+        search_query = (
+            f"ytsearch20:start{offset}:{query}" if offset > 0 else f"ytsearch20:{query}"
+        )
         opts = ydl_opts_base()
         with yt_dlp.YoutubeDL(opts) as ydl:
-            result = ydl.extract_info(f"ytsearch20:{query}", download=False)
+            result = ydl.extract_info(search_query, download=False)
             entries = result.get("entries", [])
-        listVideos(entries)
+        listVideos(entries, mode="search", query=query, page=page)
     except Exception as e:
         xbmcgui.Dialog().notification("Search error", str(e)[:100])
         xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
 
 
-def trending():
+def trending(page=1):
     try:
         country = get_country()
+        offset = (page - 1) * 20
+        trend_query = f"ytsearch20:start{offset}:trending in {country}"
         opts = ydl_opts_base()
         with yt_dlp.YoutubeDL(opts) as ydl:
             result = ydl.extract_info(
-                f"ytsearch15:trending in {country} ",
+                trend_query,
                 download=False,
             )
             entries = result.get("entries", [])
-        listVideos(entries)
+        listVideos(entries, mode="trending", page=page)
     except Exception as e:
         xbmcgui.Dialog().notification("Trending error", str(e)[:100])
         xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
 
 
-def listVideos(entries):
+def listVideos(entries, mode=None, query=None, page=1):
     quality = get_quality()
     for v in entries:
         vid_id = v.get("id") or v.get("url", "").split("v=")[-1]
@@ -214,7 +220,13 @@ def listVideos(entries):
         save_url = BASE_URL + "?" + urlencode(save_params)
         li.addContextMenuItems([("Save to Favorites", f"RunPlugin({save_url})")])
         xbmcplugin.addDirectoryItem(HANDLE, url, li, isFolder=False)
-
+    if entries and mode:
+        next_params = {"action": mode, "page": str(page + 1)}
+        if query:
+            next_params["query"] = query
+        next_url = BASE_URL + "?" + urlencode(next_params)
+        next_li = xbmcgui.ListItem("--- Next Page ---")
+        xbmcplugin.addDirectoryItem(HANDLE, next_url, next_li, isFolder=True)
     xbmcplugin.endOfDirectory(HANDLE)
 
 
@@ -325,9 +337,9 @@ def router():
     if not action:
         mainMenu()
     elif action == "search":
-        search()
+        search(query=params.get("query"), page=int(params.get("page", "1")))
     elif action == "trending":
-        trending()
+        trending(page=int(params.get("page", "1")))
     elif action == "saved_videos":
         list_saved_videos()
     elif action == "save_video":
