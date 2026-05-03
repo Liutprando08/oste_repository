@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<addon id="repository.oste" name="Oste" version="2.5.0" provider-name="Liutprando08">
+<addon id="repository.oste" name="Oste" version="2.5.1" provider-name="Liutprando08">
   <extension point="xbmc.addon.repository">
     <dir>
       <info compressed="false">https://liutprando08.github.io/zips/addons.xml</info>

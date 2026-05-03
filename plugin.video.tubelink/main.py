@@ -330,6 +330,18 @@ def play(vid_id, quality):
         xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
 
 
+def queue_item(params):
+    search_query = f"ytsearch1:similat video to {params['title']}"
+    opts = ydl_opts_base()
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        result = ydl.extract_info(search_query, download=False)
+        entries = result.get("entries", [])
+    for v in entries:
+        vid_id = v.get("id") or v.get("url", "").split("v=")[-1]
+        media_url = f"https://www.youtube.com/watch?v={vid_id}"
+        xbmc.executebuiltin(f'QueueMedia("{media_url}",,1)')
+
+
 def router():
     params = dict(parse_qsl(sys.argv[2].lstrip("?")))
     action = params.get("action")
@@ -353,6 +365,7 @@ def router():
         remove_saved(params.get("index", "0"))
     elif action == "play":
         play(params["id"], params.get("quality", "720"))
+        queue_item(params=params)
 
 
 router()
