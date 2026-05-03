@@ -1,5 +1,5 @@
 <?xml version='1.0' encoding='UTF-8'?>
-<addons><addon id="repository.oste" name="Oste" version="2.5.1" provider-name="Liutprando08">
+<addons><addon id="repository.oste" name="Oste" version="2.5.2" provider-name="Liutprando08">
   <extension point="xbmc.addon.repository">
     <dir>
       <info compressed="false">https://liutprando08.github.io/zips/addons.xml</info>
@@ -12,7 +12,7 @@
     <summary>Personal project from someone with too much free time</summary>
     <platform>all</platform>
   </extension>
-</addon><addon id="plugin.video.tubelink" name="tubelink" version="2.0.1" provider-name="Liutprando08">
+</addon><addon id="plugin.video.tubelink" name="tubelink" version="2.0.2" provider-name="Liutprando08">
     <requires>
     <import addon="xbmc.python" version="3.0.0" />
     </requires>
