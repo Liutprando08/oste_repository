@@ -9,6 +9,8 @@ import yt_dlp
 import xbmcaddon
 import xbmcgui
 import xbmcplugin
+import json
+import xbmcvfs
 
 ADDON = xbmcaddon.Addon()
 BASE_URL = sys.argv[0]
@@ -88,6 +90,33 @@ def get_quality():
         return "720"
 
 
+def get_save_path():
+    save_dir = "special://userdata/addon_data/plugin.video.tubelink/"
+    xbmcvfs.mkdirs(save_dir)
+    return f"{save_dir}saved_videos.json"
+
+
+def load_save():
+    save = get_save_path()
+    if not xbmcvfs.exists(save):
+        return []
+    try:
+        with xbmcvfs.File(save, "r") as f:
+            content = f.read()
+        return json.loads(content) if content.strip() else []
+    except (json.JSONDecodeError, Exception):
+        return []
+
+
+def save_saved(videos):
+    save = get_save_path()
+    try:
+        with xbmcvfs.File(save, "w") as f:
+            f.write(json.dumps(videos, indent=2))
+    except Exception:
+        pass
+
+
 def ydl_opts_base():
     return {
         "quiet": True,
@@ -101,6 +130,7 @@ def mainMenu():
     items = [
         ("Search", {"action": "search"}),
         ("Trending", {"action": "trending"}),
+        ("Saved videos", {"action": "saved_videos"}),
     ]
     for label, params in items:
         url = BASE_URL + "?" + urlencode(params)
@@ -174,9 +204,69 @@ def listVideos(entries):
             info["duration"] = duration
         li.setInfo("video", info)
         li.setProperty("IsPlayable", "true")
+        save_params = {
+            "action": "save_video",
+            "id": vid_id,
+            "title": title,
+            "thumb": thumb,
+            "duration": str(duration) if duration is not None else "",
+        }
+        save_url = BASE_URL + "?" + urlencode(save_params)
+        li.addContextMenuItems([("Save to Favorites", f"RunPlugin({save_url})")])
         xbmcplugin.addDirectoryItem(HANDLE, url, li, isFolder=False)
 
     xbmcplugin.endOfDirectory(HANDLE)
+
+
+def save_video(vid_id, title, thumb, duration_str):
+    videos = load_save()
+    videos.append(
+        {
+            "id": vid_id,
+            "title": title,
+            "thumb": thumb,
+            "duration": int(duration_str) if duration_str.isdigit() else 0,
+        }
+    )
+    save_saved(videos)
+
+
+def list_saved_videos():
+    videos = load_save()
+    quality = get_quality()
+
+    for idx, v in enumerate(videos):
+        vid_id = v.get("id")
+        title = v.get("title", "Unknown")
+        thumb = v.get("thumb", "")
+
+        params = {"action": "play", "id": vid_id, "quality": quality}
+        url = BASE_URL + "?" + urlencode(params)
+
+        li = xbmcgui.ListItem(title)
+        li.setArt({"thumb": thumb, "fanart": thumb})
+        duration = v.get("duration")
+        info = {"title": title}
+        if duration:
+            info["duration"] = duration
+        li.setInfo("video", info)
+        li.setProperty("IsPlayable", "true")
+        remove_params = {"action": "remove_saved", "index": str(idx)}
+        remove_url = BASE_URL + "?" + urlencode(remove_params)
+        li.addContextMenuItems([("Remove from Saved", f"RunPlugin({remove_url})")])
+        xbmcplugin.addDirectoryItem(HANDLE, url, li, isFolder=False)
+    xbmcplugin.endOfDirectory(HANDLE)
+
+
+def remove_saved(index_str):
+    videos = load_save()
+    try:
+        idx = int(index_str)
+        if 0 <= idx < len(videos):
+            videos.pop(idx)
+            save_saved(videos)
+    except ValueError:
+        pass
 
 
 def play(vid_id, quality):
@@ -238,6 +328,17 @@ def router():
         search()
     elif action == "trending":
         trending()
+    elif action == "saved_videos":
+        list_saved_videos()
+    elif action == "save_video":
+        save_video(
+            params.get("id"),
+            params.get("title", ""),
+            params.get("thumb", ""),
+            params.get("duration", ""),
+        )
+    elif action == "remove_saved":
+        remove_saved(params.get("index", "0"))
     elif action == "play":
         play(params["id"], params.get("quality", "720"))
 
