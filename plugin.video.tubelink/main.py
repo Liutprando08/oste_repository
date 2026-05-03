@@ -148,16 +148,31 @@ def listVideos(entries):
         vid_id = v.get("id") or v.get("url", "").split("v=")[-1]
         title = v.get("title") or v.get("ie_key", "Unknown")
         thumb = v.get("thumbnail") or (v.get("thumbnails") or [{}])[0].get("url", "")
+        duration = v.get("duration")
 
         if not vid_id or vid_id.startswith("http"):
             continue
+
+        if duration is not None and isinstance(duration, (int, float)):
+            duration = int(duration)
+            hrs = duration // 3600
+            mins = (duration % 3600) // 60
+            secs = duration % 60
+            if hrs > 0:
+                duration_str = f"[{hrs:02d}:{mins:02d}:{secs:02d}] "
+            else:
+                duration_str = f"[{mins:02d}:{secs:02d}] "
+            title = duration_str + title
 
         params = {"action": "play", "id": vid_id, "quality": quality}
         url = BASE_URL + "?" + urlencode(params)
 
         li = xbmcgui.ListItem(title)
         li.setArt({"thumb": thumb, "fanart": thumb})
-        li.setInfo("video", {"title": title})
+        info = {"title": title}
+        if duration is not None:
+            info["duration"] = duration
+        li.setInfo("video", info)
         li.setProperty("IsPlayable", "true")
         xbmcplugin.addDirectoryItem(HANDLE, url, li, isFolder=False)
 
