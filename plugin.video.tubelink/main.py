@@ -409,7 +409,8 @@ def queue_item(params):
         xbmcgui.Dialog().notification("Queued", rel_vid.get("title", "")[:50])
 
         xbmcplugin.setResolvedUrl(HANDLE, True, li)
-        queue_item()
+        queue_item(params)
+
     except KeyError as e:
         xbmcgui.Dialog().notification("Queue Error", f"Missing parameter: {str(e)}")
     except Exception as e:
