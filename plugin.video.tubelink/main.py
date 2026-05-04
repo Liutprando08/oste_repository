@@ -17,6 +17,9 @@ ADDON = xbmcaddon.Addon()
 BASE_URL = sys.argv[0]
 HANDLE = int(sys.argv[1])
 
+recent_queued_ids = []
+MAX_RECENT = 10
+
 QUALITIES = ["360", "480", "720", "1080"]
 COUNTRY = [
     "United States",
@@ -348,7 +351,7 @@ def queue_item(params):
             related = info.get("related_videos", [])
 
             if not related:
-                search_query = f"ytsearch1:{params.get('title', '')}"
+                search_query = f"ytsearch5:trending"
                 with yt_dlp.YoutubeDL(ydl_opts_base()) as ydl:
                     search_result = ydl.extract_info(search_query, download=False)
                     related = search_result.get("entries", [])
@@ -357,10 +360,16 @@ def queue_item(params):
             xbmcgui.Dialog().notification("Queue", "No related videos found")
             return
 
-        rel_vid = related[0]
-        rel_id = rel_vid.get("id") or rel_vid.get("url", "").split("v=")[-1]
-        if not rel_id:
-            xbmcgui.Dialog().notification("Queue Error", "Invalid related video ID")
+        rel_vid = None
+        for v in related:
+            rid = v.get("id") or v.get("url", "").split("v=")[-1]
+            if rid and rid not in recent_queued_ids:
+                rel_vid = v
+                rel_id = rid
+                break
+
+        if not rel_vid:
+            xbmcgui.Dialog().notification("Queue", "No new video to queue")
             return
 
         quality = params.get("quality", "720")
@@ -400,7 +409,6 @@ def queue_item(params):
         if not stream_url:
             raise ValueError("No playable stream for related video")
 
-        # Add to Kodi vide
         playlist = xbmc.PlayList(xbmc.PLAYLIST_VIDEO)
         li = xbmcgui.ListItem(rel_vid.get("title", "Related Video"))
         li.setMimeType("video/mp4")
@@ -408,8 +416,11 @@ def queue_item(params):
         playlist.add(stream_url, li)
         xbmcgui.Dialog().notification("Queued", rel_vid.get("title", "")[:50])
 
+        recent_queued_ids.append(rel_id)
+        if len(recent_queued_ids) > MAX_RECENT:
+            recent_queued_ids.pop(0)
+
         xbmcplugin.setResolvedUrl(HANDLE, True, li)
-        queue_item(params)
 
     except KeyError as e:
         xbmcgui.Dialog().notification("Queue Error", f"Missing parameter: {str(e)}")
