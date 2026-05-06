@@ -10,7 +10,7 @@
         <summary lang="en">YouTube without API key</summary>
         <description lang="en">Watch YouTube videos using yt-dlp - no YouTube API key needed.</description>
     
-    <assets><icon>resources/icon.png</icon></assets>
+    <assets><icon>resources/tubelink_logo.png</icon></assets>
         <platform>all</platform>
         <language>en</language>
         <license>GPL v3</license>
