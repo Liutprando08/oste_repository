@@ -13,7 +13,7 @@
         <language>en</language>
         <license>GPL-3.0</license>
         <assets>
-          <icon>resources/icon.webp</icon>
+          <icon>resources/icon.png</icon>
         </assets>
     </extension>
 </addon>
