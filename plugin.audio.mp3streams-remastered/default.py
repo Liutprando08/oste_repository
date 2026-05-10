@@ -6,14 +6,12 @@ import xbmcplugin, xbmcgui, xbmcvfs, os, xbmc, sys
 import settings, time
 import requests
 from bs4 import BeautifulSoup
-from t0mm0.common.net import Net
 from threading import Thread
 from mutagen.easyid3 import EasyID3
 from mutagen.mp3 import MP3
 
 
 cookie_jar = settings.cookie_jar()
-net = Net()
 ADDON = settings.addon()
 GOTHAM_FIX = False
 GOLDEN_PATH = True
@@ -908,34 +906,38 @@ def play_album(name, url, iconimage, mix, clear):
             browse = True
     match = []
     link = GET_url(url)  # .decode('utf-8')
+    soup = BeautifulSoup(link, "lxml")
     if "musicmp3" in origurl:
-        link = link.split('<tr class="song" ')
+        rows = soup.find_all("tr", itemprop="tracks")
+        for row in rows:
+            track = row.get("id", "").replace("track", "")
+            play_btn = row.find("a", class_="js_play_btn")
+            rel = play_btn["rel"] if play_btn else ""  # replaces your alt fallback
+            songurl = row.find("meta", itemprop="url")["content"]
+            duration = row.find("meta", itemprop="duration")["content"]
+            album = row.find("meta", itemprop="inAlbum")["content"]
+            artist = row.find("meta", itemprop="byArtist")["content"]
+            songname = row.find("span", itemprop="name").text
+            dur = row.find("div", class_="jp-seek-bar")["data-time"]
+            match.append((track, rel, songurl, "", "", album, artist, songname, dur))
     elif "goldenmp3" in origurl:
-        link = regex_from_to(link, '<table class="title_list">', "<div>Total")
-        link = link.split('itemprop="tracks"')
+        table = soup.find("table", class_="title_list")
+        rows = table.find_all("tr", itemprop="tracks")
+        for row in rows:
+            rel = row.find("a", class_="play")["rel"]
+            songname = row.find("span", itemprop="name").text
+            artist = row.find("span", class_="artist").text
+            dur = row.find("td", class_="duration").text  # adjust to actual class
+            match.append(("", rel, "", "", "", "", artist, songname, dur))
     else:
-        link = link.split("<tr item")
-    for song in link:
-        if "rel=" in song:
-            items = re.compile(std).findall(song)
-            for item in items:
-                match.append(item)
-        else:
-            items = re.compile(alt).findall(song)
-            for item in items:
-                item = (
-                    item[0],
-                    "",
-                    item[1],
-                    item[2],
-                    item[3],
-                    item[4],
-                    item[5],
-                    item[6],
-                    item[7],
-                    item[8],
-                )
-                match.append(item)
+        rows = soup.find_all("tr", itemprop="tracks")
+        for row in rows:
+            rel = row.find("a", class_="play")["rel"]
+            songname = row.find("span", itemprop="name").text
+            artist = row.find("span", class_="artist").text
+            dur = row.find("span", class_="duration").text
+            trn = row.find("td").text.strip()
+            match.append(("", rel, "", "", trn, "", artist, songname, dur))
     nItem = len(match)
     count = 0
     if browse == True:

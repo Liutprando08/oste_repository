@@ -16,7 +16,6 @@ import xbmcvfs
 ADDON = xbmcaddon.Addon()
 BASE_URL = sys.argv[0]
 HANDLE = int(sys.argv[1])
-
 recent_queued_ids = []
 MAX_RECENT = 10
 SKIP_WORDS = {
@@ -354,7 +353,6 @@ def play(vid_id, quality):
         xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
 
 
-"""
 def title_similarity(a, b):
     def tokens(s):
         return set(re.sub(r"[^a-z0-9\s]", "", s.lower()).split())
@@ -375,110 +373,46 @@ def clean_title_for_search(title):
 
 
 def queue_item(params):
-    try:
-        vid_id = params["id"]
-        title = params["title"]
-        quality = params.get("quality", "720")
+    # 1. Corrected case: xbmc.PlayList (not playlist)
+    playlist = xbmc.PlayList(xbmc.PLAYLIST_VIDEO)
 
-        opts = {
-            "quiet": True,
-            "no_warnings": True,
-            "skip_download": True,
-            "extract_flat": False,
-        }
-        with yt_dlp.YoutubeDL(opts) as ydl:
-            info = ydl.extract_info(
-                f"https://www.youtube.com/watch?v={vid_id}", download=False
-            )
+    vid_id = params["id"]
+    quality = params.get("quality", "720")
 
-        source_channel = info.get("channel_id") or info.get("uploader_id", "")
-        related = info.get("related_videos", [])
+    opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "skip_download": True,
+        "extract_flat": False,
+        "playlist_items": 5,  # Changed to 1 if you only want the specific video
+    }
 
-        SIMILARITY_THRESHOLD = 0.4
-
-        def is_acceptable(v, current_title, current_id):
-            rid = v.get("id") or v.get("url", "").split("v=")[-1]
-            if not rid or rid == current_id:
-                return False
-            if rid in recent_queued_ids:
-                return False
-            if source_channel and v.get("channel_id") == source_channel:
-                return False
-            if (
-                title_similarity(current_title, v.get("title", ""))
-                > SIMILARITY_THRESHOLD
-            ):
-                return False
-            return True
-
-        rel_vid = next((v for v in related if is_acceptable(v, title, vid_id)), None)
-
-        if not rel_vid:
-            clean_query = clean_title_for_search(title)
-            search_query = f"ytsearch10:{clean_query} mix"
-            with yt_dlp.YoutubeDL(ydl_opts_base()) as ydl:
-                search_result = ydl.extract_info(search_query, download=False)
-                candidates = search_result.get("entries", [])
-
-            rel_vid = next(
-                (v for v in candidates if is_acceptable(v, title, vid_id)), None
-            )
-
-        if not rel_vid:
-            xbmcgui.Dialog().notification("Queue", "No suitable related video found")
-            return
-
-        rel_id = rel_vid.get("id") or rel_vid.get("url", "").split("v=")[-1]
-
-        fmt = (
-            f"best[height<={quality}][ext=mp4][acodec!=none][vcodec!=none]"
-            f"/best[ext=mp4][acodec!=none][vcodec!=none]"
-            f"/best[ext=mp4]/best"
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        info = ydl.extract_info(
+            f"https://www.youtube.com/watch?v={vid_id}", download=False
         )
-        with yt_dlp.YoutubeDL(
-            {"quiet": True, "no_warnings": True, "format": fmt, "skip_download": True}
-        ) as ydl:
-            rel_info = ydl.extract_info(
-                f"https://www.youtube.com/watch?v={rel_id}", download=False
-            )
 
-        stream_url = rel_info.get("url")
-        if not stream_url:
-            formats = rel_info.get("formats", [])
-            progressive = [
-                f
-                for f in formats
-                if f.get("ext") == "mp4"
-                and f.get("acodec") not in (None, "none")
-                and f.get("vcodec") not in (None, "none")
-            ]
-            stream_url = (
-                progressive[-1]["url"]
-                if progressive
-                else (formats[-1]["url"] if formats else None)
-            )
+        related = info.get("related_videos", [])
+        next = related[1]
+        # Ensure variables are initialized in case the 'if' fails
+        li = None
+        final_url = None
 
-        if not stream_url:
-            raise ValueError("No playable stream for related video")
+        if next:
+            # yt-dlp usually returns the direct title and id here
+            title = next.get("title", "Unknown Video")
+            vid_id_resolved = next.get("id", vid_id)
 
-        playlist = xbmc.PlayList(xbmc.PLAYLIST_VIDEO)
-        li = xbmcgui.ListItem(rel_vid.get("title", "Related Video"))
-        li.setMimeType("video/mp4")
-        li.setProperty("IsPlayable", "true")
-        playlist.add(stream_url, li)
-        xbmcgui.Dialog().notification("Queued", rel_vid.get("title", "")[:50])
+            li = xbmcgui.ListItem(title)
+            li.setInfo("video", {"title": title})
+            li.setProperty("IsPlayable", "true")
 
-        recent_queued_ids.append(rel_id)
-        if len(recent_queued_ids) > MAX_RECENT:
-            recent_queued_ids.pop(0)
+            # 2. Fixed f-string: Use the variable directly, not a dictionary
+            final_url = f"https://www.youtube.com/watch?v={vid_id_resolved}"
 
-        xbmcplugin.setResolvedUrl(HANDLE, True, li)
-
-    except KeyError as e:
-        xbmcgui.Dialog().notification("Queue Error", f"Missing parameter: {str(e)}")
-    except Exception as e:
-        xbmcgui.Dialog().notification("Queue Error", str(e)[:100])
-"""
+        # 3. Only add to playlist if we successfully resolved the item
+        if li and final_url:
+            playlist.add(url=final_url, listitem=li)
 
 
 def router():
@@ -504,9 +438,7 @@ def router():
         remove_saved(params.get("index", "0"))
     elif action == "play":
         play(params["id"], params.get("quality", "720"))
-
-
-#     queue_item(params=params)
+        queue_item(params=params)
 
 
 router()

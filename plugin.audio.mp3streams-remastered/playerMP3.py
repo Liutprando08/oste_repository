@@ -71,15 +71,38 @@ STARTED = False
 
 
 def stopDownloaders():
-    import playerMP3
+    log("in STOPDOWNLOADERS")
 
-    playerMP3.stopDownloaders()
+    # signal all downloaders to stop
+    for i in range(MAX_DOWNLOADERS):
+        state = xbmcgui.Window(10000).getProperty(PROPERTY % i)
+        if state:
+            xbmcgui.Window(10000).setProperty(PROPERTY % i, "Signal")
+
+    # now wait for them to all stop
+    i = 0
+    while i < MAX_DOWNLOADERS:
+        state = xbmcgui.Window(10000).getProperty(PROPERTY % i)
+        if state:
+            xbmc.sleep(100)
+            i = 0
+        else:
+            i += 1
 
 
 def resetCache():
-    import playerMP3
+    log("in RESETCACHE")
+    if not xbmcvfs.exists(TEMP):
+        try:
+            xbmcvfs.mkdirs(TEMP)
+        except:
+            pass
+        return
 
-    playerMP3.resetCache()
+    dirs, files = xbmcvfs.listdir(TEMP)
+    for file in files:
+        filename = os.path.join(TEMP, file)
+        deleteFile(filename)
 
 
 def clear():
@@ -245,26 +268,6 @@ def unavailable(filename):
     return False
 
 
-def stopDownloaders():
-    log("in STOPDOWNLOADERS")
-
-    # signal all downloaders to stop
-    for i in range(MAX_DOWNLOADERS):
-        state = xbmcgui.Window(10000).getProperty(PROPERTY % i)
-        if state:
-            xbmcgui.Window(10000).setProperty(PROPERTY % i, "Signal")
-
-    # now wait for them to all stop
-    i = 0
-    while i < MAX_DOWNLOADERS:
-        state = xbmcgui.Window(10000).getProperty(PROPERTY % i)
-        if state:
-            xbmc.sleep(100)
-            i = 0
-        else:
-            i += 1
-
-
 def getFreeSlot():
     for i in range(MAX_DOWNLOADERS):
         state = xbmcgui.Window(10000).getProperty(PROPERTY % i)
@@ -316,21 +319,6 @@ def resetCache_original():
         os.makedirs(TEMP)
     except:
         pass
-
-
-def resetCache():
-    log("in RESETCACHE")
-    if not xbmcvfs.exists(TEMP):
-        try:
-            xbmcvfs.mkdirs(TEMP)
-        except:
-            pass
-        return
-
-    dirs, files = xbmcvfs.listdir(TEMP)
-    for file in files:
-        filename = os.path.join(TEMP, file)
-        deleteFile(filename)
 
 
 def createMD5(url):
