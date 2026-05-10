@@ -372,47 +372,75 @@ def clean_title_for_search(title):
     return " ".join(words[:5]).strip()
 
 
-def queue_item(params):
-    # 1. Corrected case: xbmc.PlayList (not playlist)
+def queue_item(next_id, quality="720"):
+    """Resolve and add a single video ID to the Kodi playlist."""
+    global recent_queued_ids
     playlist = xbmc.PlayList(xbmc.PLAYLIST_VIDEO)
 
-    vid_id = params["id"]
-    quality = params.get("quality", "720")
+    fmt = (
+        f"best[height<={quality}][ext=mp4][acodec!=none][vcodec!=none]"
+        f"/best[ext=mp4][acodec!=none][vcodec!=none]"
+        f"/best[ext=mp4]/best"
+    )
 
-    opts = {
+    stream_opts = {
+        "quiet": True,
+        "no_warnings": True,
+        "format": fmt,
+        "skip_download": True,
+    }
+    with yt_dlp.YoutubeDL(stream_opts) as ydl:
+        stream_info = ydl.extract_info(
+            f"https://www.youtube.com/watch?v={next_id}", download=False
+        )
+    stream_url = stream_info.get("url")
+    if not stream_url:
+        return
+
+    # Track this ID so it isn't queued again in the same session
+    recent_queued_ids.append(next_id)
+    if len(recent_queued_ids) > MAX_RECENT:
+        recent_queued_ids.pop(0)
+
+    title = stream_info.get("title") or next_id
+    li = xbmcgui.ListItem(label=title, path=stream_url)  # Fix: was 'labe'
+    li.setMimeType("video/mp4")
+    li.setProperty("IsPlayable", "true")
+    playlist.add(url=stream_url, listitem=li)
+
+
+def queue_related_videos(vid_id, quality="720", count=5):
+    """Fetch the YouTube mix for vid_id once, then queue up to `count` related videos."""
+    flat_opts = {
         "quiet": True,
         "no_warnings": True,
         "skip_download": True,
-        "extract_flat": False,
-        "playlist_items": 5,  # Changed to 1 if you only want the specific video
+        "extract_flat": True,
     }
+    try:
+        with yt_dlp.YoutubeDL(flat_opts) as ydl:
+            info = ydl.extract_info(
+                f"https://www.youtube.com/watch?v={vid_id}&list=RD{vid_id}",
+                download=False,
+            )
+        # Index 0 is the video currently playing; start from index 1
+        candidates = [
+            entry["id"]
+            for entry in info.get("entries", [])[1:]
+            if "id" in entry and entry["id"] not in recent_queued_ids
+        ]
+    except Exception:
+        return
 
-    with yt_dlp.YoutubeDL(opts) as ydl:
-        info = ydl.extract_info(
-            f"https://www.youtube.com/watch?v={vid_id}", download=False
-        )
-
-        related = info.get("related_videos", [])
-        next = related[1]
-        # Ensure variables are initialized in case the 'if' fails
-        li = None
-        final_url = None
-
-        if next:
-            # yt-dlp usually returns the direct title and id here
-            title = next.get("title", "Unknown Video")
-            vid_id_resolved = next.get("id", vid_id)
-
-            li = xbmcgui.ListItem(title)
-            li.setInfo("video", {"title": title})
-            li.setProperty("IsPlayable", "true")
-
-            # 2. Fixed f-string: Use the variable directly, not a dictionary
-            final_url = f"https://www.youtube.com/watch?v={vid_id_resolved}"
-
-        # 3. Only add to playlist if we successfully resolved the item
-        if li and final_url:
-            playlist.add(url=final_url, listitem=li)
+    queued = 0
+    for next_id in candidates:
+        if queued >= count:
+            break
+        try:
+            queue_item(next_id, quality=quality)
+            queued += 1
+        except Exception:
+            continue
 
 
 def router():
@@ -438,7 +466,7 @@ def router():
         remove_saved(params.get("index", "0"))
     elif action == "play":
         play(params["id"], params.get("quality", "720"))
-        queue_item(params=params)
+        queue_related_videos(params["id"], quality=params.get("quality", "720"), count=5)
 
 
 router()
