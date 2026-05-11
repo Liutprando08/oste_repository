@@ -1,10 +1,10 @@
 import sys
 import os
 from urllib.parse import parse_qsl, urlencode
+from collections import deque
 
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), "lib"))
-import re
 import yt_dlp
 import xbmcaddon
 import xbmcgui
@@ -12,33 +12,12 @@ import xbmcplugin
 import xbmc
 import json
 import xbmcvfs
+import threading
 
 ADDON = xbmcaddon.Addon()
 BASE_URL = sys.argv[0]
 HANDLE = int(sys.argv[1])
-recent_queued_ids = []
-MAX_RECENT = 10
-SKIP_WORDS = {
-    "official",
-    "video",
-    "audio",
-    "lyrics",
-    "lyric",
-    "hd",
-    "hq",
-    "mv",
-    "music",
-    "remix",
-    "cover",
-    "live",
-    "version",
-    "ft",
-    "feat",
-    "full",
-    "extended",
-    "explicit",
-    "clean",
-}
+recent_queued_ids = deque(maxlen=10)
 QUALITIES = ["360", "480", "720", "1080"]
 COUNTRY = [
     "United States",
@@ -97,6 +76,9 @@ COUNTRY = [
     "Venezuela",
     "Ukraine",
 ]
+
+_queue_stop_event = threading.Event()
+_queue_lock = threading.Lock()
 
 
 def get_country():
@@ -228,10 +210,9 @@ def listVideos(entries, mode=None, query=None, page=1):
 
         li = xbmcgui.ListItem(title)
         li.setArt({"thumb": thumb, "fanart": thumb})
-        info = {"title": title}
+        li.getVideoInfoTag().setTitle(title)
         if duration is not None:
-            info["duration"] = duration
-        li.setInfo("video", info)
+            li.getVideoInfoTag().setDuration(duration)
         li.setProperty("IsPlayable", "true")
         save_params = {
             "action": "save_video",
@@ -280,11 +261,10 @@ def list_saved_videos():
 
         li = xbmcgui.ListItem(title)
         li.setArt({"thumb": thumb, "fanart": thumb})
+        li.getVideoInfoTag().setTitle(title)
         duration = v.get("duration")
-        info = {"title": title}
         if duration:
-            info["duration"] = duration
-        li.setInfo("video", info)
+            li.getVideoInfoTag().setDuration(duration)
         li.setProperty("IsPlayable", "true")
         remove_params = {"action": "remove_saved", "index": str(idx)}
         remove_url = BASE_URL + "?" + urlencode(remove_params)
@@ -308,7 +288,8 @@ def play(vid_id, quality):
     yt_url = f"https://www.youtube.com/watch?v={vid_id}"
 
     fmt = (
-        f"best[height<={quality}][ext=mp4][acodec!=none][vcodec!=none]"
+        f"best[height<={quality}][fps<=30][ext=mp4][acodec!=none][vcodec!=none]"
+        f"/best[height<={quality}][ext=mp4][acodec!=none][vcodec!=none]"
         f"/best[ext=mp4][acodec!=none][vcodec!=none]"
         f"/best[ext=mp4]"
         f"/best"
@@ -320,6 +301,7 @@ def play(vid_id, quality):
             "no_warnings": True,
             "format": fmt,
             "skip_download": True,
+            "socket_timeout": 15,
         }
         with yt_dlp.YoutubeDL(opts) as ydl:
             info = ydl.extract_info(yt_url, download=False)
@@ -353,69 +335,54 @@ def play(vid_id, quality):
         xbmcplugin.setResolvedUrl(HANDLE, False, xbmcgui.ListItem())
 
 
-def title_similarity(a, b):
-    def tokens(s):
-        return set(re.sub(r"[^a-z0-9\s]", "", s.lower()).split())
+def queue_item(next_id, title="", quality="720"):
+    params = {"action": "play", "id": next_id, "quality": quality, "title": title}
+    plugin_url = BASE_URL + "?" + urlencode(params)
 
-    ta, tb = tokens(a), tokens(b)
-    if not ta or not tb:
-        return 0.0
-    return len(ta & tb) / max(len(ta), len(tb))
+    li = xbmcgui.ListItem(label=title or next_id, path=plugin_url)
+    li.setProperty("IsPlayable", "true")
 
-
-def clean_title_for_search(title):
-    title = re.sub(r"^\[\d+:\d+(?::\d+)?\]\s*", "", title)
-    title = re.sub(r"[\(\[][^\)\]]*[\)\]]", "", title)
-    title = re.sub(r"\bft\.?\b.*", "", title, flags=re.IGNORECASE)
-    title = re.sub(r"\bfeat\.?\b.*", "", title, flags=re.IGNORECASE)
-    words = [w for w in title.split() if w.lower() not in SKIP_WORDS]
-    return " ".join(words[:5]).strip()
-
-
-def queue_item(next_id, quality="720"):
-    """Resolve and add a single video ID to the Kodi playlist."""
-    global recent_queued_ids
     playlist = xbmc.PlayList(xbmc.PLAYLIST_VIDEO)
+    playlist.add(url=plugin_url, listitem=li)
 
-    fmt = (
-        f"best[height<={quality}][ext=mp4][acodec!=none][vcodec!=none]"
-        f"/best[ext=mp4][acodec!=none][vcodec!=none]"
-        f"/best[ext=mp4]/best"
-    )
+    with _queue_lock:
+        recent_queued_ids.append(next_id)
 
-    stream_opts = {
+
+def _ytsearch_fallback(vid_id, title, count):
+    query = f"ytsearch{count}:{title} similar"
+    search_opts = {
         "quiet": True,
         "no_warnings": True,
-        "format": fmt,
         "skip_download": True,
+        "extract_flat": True,
+        "socket_timeout": 15,
     }
-    with yt_dlp.YoutubeDL(stream_opts) as ydl:
-        stream_info = ydl.extract_info(
-            f"https://www.youtube.com/watch?v={next_id}", download=False
-        )
-    stream_url = stream_info.get("url")
-    if not stream_url:
-        return
-
-    # Track this ID so it isn't queued again in the same session
-    recent_queued_ids.append(next_id)
-    if len(recent_queued_ids) > MAX_RECENT:
-        recent_queued_ids.pop(0)
-
-    title = stream_info.get("title") or next_id
-    li = xbmcgui.ListItem(label=title, path=stream_url)  # Fix: was 'labe'
-    li.setMimeType("video/mp4")
-    li.setProperty("IsPlayable", "true")
-    playlist.add(url=stream_url, listitem=li)
+    try:
+        with yt_dlp.YoutubeDL(search_opts) as ydl:
+            result = ydl.extract_info(query, download=False)
+        entries = result.get("entries", [])
+    except Exception:
+        return []
+    with _queue_lock:
+        current_queued = list(recent_queued_ids)
+    candidates = [
+        entry
+        for entry in entries
+        if entry.get("id")
+        and entry["id"] not in current_queued
+        and entry["id"] != vid_id
+    ]
+    return candidates
 
 
-def queue_related_videos(vid_id, quality="720", count=5):
-    """Fetch the YouTube mix for vid_id once, then queue up to `count` related videos."""
+def queue_related_videos(vid_id, quality="720", count=3, title=""):
     flat_opts = {
         "quiet": True,
         "no_warnings": True,
         "skip_download": True,
         "extract_flat": True,
+        "socket_timeout": 15,
     }
     try:
         with yt_dlp.YoutubeDL(flat_opts) as ydl:
@@ -423,24 +390,35 @@ def queue_related_videos(vid_id, quality="720", count=5):
                 f"https://www.youtube.com/watch?v={vid_id}&list=RD{vid_id}",
                 download=False,
             )
-        # Index 0 is the video currently playing; start from index 1
+        with _queue_lock:
+            current_queued = list(recent_queued_ids)
         candidates = [
-            entry["id"]
+            entry
             for entry in info.get("entries", [])[1:]
-            if "id" in entry and entry["id"] not in recent_queued_ids
+            if "id" in entry and entry["id"] not in current_queued
         ]
     except Exception:
-        return
+        candidates = _ytsearch_fallback(vid_id, title, count)
+        if not candidates:
+            return
 
     queued = 0
-    for next_id in candidates:
+    for entry in candidates:
+        if _queue_stop_event.is_set():
+            break
         if queued >= count:
             break
         try:
-            queue_item(next_id, quality=quality)
+            next_id = entry["id"]
+            title = entry.get("title", next_id)
+            queue_item(next_id, title=title, quality=quality)
             queued += 1
         except Exception:
             continue
+
+    if queued > 0:
+        msg = f"{queued} related video{'s' if queued > 1 else ''} queued"
+        xbmcgui.Dialog().notification("TubeLink", msg, xbmcgui.NOTIFICATION_INFO, 3000)
 
 
 def router():
@@ -466,7 +444,17 @@ def router():
         remove_saved(params.get("index", "0"))
     elif action == "play":
         play(params["id"], params.get("quality", "720"))
-        queue_related_videos(params["id"], quality=params.get("quality", "720"), count=5)
+        _queue_stop_event.clear()
+        threading.Thread(
+            target=queue_related_videos,
+            args=(
+                params["id"],
+                params.get("quality", "720"),
+                3,
+                params.get("title", ""),
+            ),
+            daemon=True,
+        ).start()
 
 
 router()
