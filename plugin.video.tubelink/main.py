@@ -376,7 +376,7 @@ def _ytsearch_fallback(vid_id, title, count):
     return candidates
 
 
-def queue_related_videos(vid_id, quality="720", count=3, title=""):
+def queue_related_videos(vid_id, quality="720", count=7, title=""):
     flat_opts = {
         "quiet": True,
         "no_warnings": True,
@@ -390,13 +390,18 @@ def queue_related_videos(vid_id, quality="720", count=3, title=""):
                 f"https://www.youtube.com/watch?v={vid_id}&list=RD{vid_id}",
                 download=False,
             )
-        with _queue_lock:
-            current_queued = list(recent_queued_ids)
-        candidates = [
-            entry
-            for entry in info.get("entries", [])[1:]
-            if "id" in entry and entry["id"] not in current_queued
-        ]
+        if info:
+            with _queue_lock:
+                current_queued = list(recent_queued_ids)
+            candidates = [
+                entry
+                for entry in info.get("entries", [])[1:]
+                if "id" in entry and entry["id"] not in current_queued
+            ]
+            if not candidates:
+                candidates = _ytsearch_fallback(vid_id, title, count)
+        else:
+            candidates = _ytsearch_fallback(vid_id, title, count)
     except Exception:
         candidates = _ytsearch_fallback(vid_id, title, count)
         if not candidates:
@@ -450,7 +455,7 @@ def router():
             args=(
                 params["id"],
                 params.get("quality", "720"),
-                3,
+                7,
                 params.get("title", ""),
             ),
             daemon=True,
