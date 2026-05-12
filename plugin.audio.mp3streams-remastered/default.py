@@ -1060,6 +1060,7 @@ def play_album(name, url, iconimage, mix, clear):
             title = "%s. %s" % (trn, songname)
             dur = str((int(dur.split(":")[0]) * 60) + int(dur.split(":")[1]))
         addDirAudio(title, url, 10, iconimage, songname, artist, album, dur, "")
+        block = count == 1
         if "musicmp3" in origurl:
             url, liz = playerMP3.getListItem(
                 songname,
@@ -1071,7 +1072,8 @@ def play_album(name, url, iconimage, mix, clear):
                 url,
                 fanart,
                 "true",
-                False,  # was GOTHAM_FIX_2 — force False to skip pre-cache
+                True,
+                block=block,
             )
         elif "goldenmp3" in origurl:
             url, liz = playerMP3.getListItem(
@@ -1084,7 +1086,8 @@ def play_album(name, url, iconimage, mix, clear):
                 url,
                 fanart,
                 "true",
-                GOTHAM_FIX_2,
+                True,
+                block=block,
             )
         else:
             url, liz = playerMP3.getListItem(
@@ -1097,7 +1100,8 @@ def play_album(name, url, iconimage, mix, clear):
                 url,
                 fanart,
                 "true",
-                GOTHAM_FIX_2,
+                True,
+                block=block,
             )
         if FOLDERSTRUCTURE == "0":
             stored_path = os.path.join(MUSIC_DIR, artist, album, songname + ".mp3")
@@ -1147,6 +1151,7 @@ def play_song(url, name, songname, artist, album, iconimage, dur, clear):
         track = 0
 
     # getListItem resolves to local cache or header-augmented URL automatically.
+    # block=True ensures the first track waits for pre-cache before playback.
     resolved_url, liz = playerMP3.getListItem(
         songname,
         artist,
@@ -1157,7 +1162,8 @@ def play_song(url, name, songname, artist, album, iconimage, dur, clear):
         url,
         fanart,
         "true",
-        GOTHAM_FIX_2,
+        True,
+        block=True,
     )
 
     # Override with a permanently stored file when keep_downloads is on and
@@ -1280,17 +1286,37 @@ def download_album(url, name, iconimage):
         return
     playlist = []
     link = GET_url(url)  # .decode('utf-8')
+    match = []
+    soup = BeautifulSoup(link, "html.parser")
     xbmc.log("link = {0}".format(link), xbmc.LOGINFO)
     notification(name, "Download started", "3000", iconimage)
     if "goldenmp3" in url:
-        link = regex_from_to(link, '<table class="title_list">', "<div>Total")
-        match = re.compile(
-            'itemscope="(.+?)" itemtype="http://schema.org/MusicRecording"><td><a class="play" href="#" rel="(.+?)" title="Listen the song in low quality">(.+?)</a>(.+?)<td><div class="title_td_wrap">(.+?)<span itemprop="(.+?)am(.+?)">(.+?)</span>&ensp;(.+?)<div class="jp-seek-bar"><div class="jp-play-bar"></div></div></div></td><td>'
-        ).findall(link)
+        table = soup.find("table", class_="title_list")
+        rows = table.find_all("tr", itemprop="tracks")
+        for row in rows:
+            el = row.find("a", class_="play")
+            rel = el["rel"][0] if el is not None else ""
+            el = row.find("span", itemprop="name")
+            songname = el.text if el is not None else ""
+            el = row.find("span", class_="artist")
+            artist = el.text if el is not None else ""
+            el = row.find("td", class_="duration")
+            dur = el.text if el is not None else ""
+            match.append(("", rel, "", "", "", "", artist, songname, dur))
     else:
-        match = re.compile(
-            '<tr class="song" id="(.+?)" itemprop="tracks" itemscope="itemscope" itemtype="http://schema.org/MusicRecording"><td class="song__play_button"><a class="player__play_btn js_play_btn" href="#" rel="(.+?)" title="Play track"/></td><td class="song__name"><div class="title_td_wrap"><meta content="(.+?)" itemprop="url"/><meta content="(.+?)" itemprop="duration"/><meta content="(.+?)" itemprop="inAlbum"/><meta content="(.+?)" itemprop="byArtist"/><span itemprop="name">(.+?)</span><div class="jp-seek-bar" data-time="(.+?)">'
-        ).findall(link)
+        rows = soup.find_all("tr", itemprop="tracks")
+        for row in rows:
+            el = row.find("a", class_="play")
+            rel = el["rel"][0] if el is not None else ""
+            el = row.find("span", itemprop="name")
+            songname = el.text if el is not None else ""
+            el = row.find("span", class_="artist")
+            artist = el.text if el is not None else ""
+            el = row.find("span", class_="duration")
+            dur = el.text if el is not None else ""
+            el = row.find("td")
+            trn = el.text.strip() if el is not None else ""
+            match.append(("", rel, "", "", trn, "", artist, songname, dur))
     xbmc.log("match = {0}".format(match), xbmc.LOGINFO)
     nSong = len(match)
     count = 0
@@ -1320,13 +1346,7 @@ def download_album(url, name, iconimage):
         )
         download_lock_file = create_file(MUSIC_DIR, "downloading.txt")
         local_filename = album_path + "/" + title + ".mp3"
-        headers = {
-            "Host": "listen.musicmp3.ru",
-            "Range": "bytes=0-",
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; WOW64; rv:44.0) Gecko/20100101 Firefox/44.0",
-            "Accept": "audio/webm,audio/ogg,audio/wav,audio/*;q=0.9,application/ogg;q=0.7,video/*;q=0.6,*/*;q=0.5",
-            "Referer": "https://www.goldenmp3.ru",
-        }
+        headers = playerMP3.STREAM_HEADERS
         r = requests.get(url, headers=headers, stream=True)
         with open(local_filename, "wb") as f:
             for chunk in r.iter_content(chunk_size=1024):

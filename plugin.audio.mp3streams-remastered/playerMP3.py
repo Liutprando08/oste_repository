@@ -48,18 +48,19 @@ import xbmcvfs
 # ══════════════════════════════════════════════════════════════════════════════
 
 ADDON_ID = "plugin.audio.mp3streams-remastered"
-ADDON    = xbmcaddon.Addon(ADDON_ID)
-TITLE    = ADDON.getAddonInfo("name")
-VERSION  = ADDON.getAddonInfo("version")
-HOME     = xbmcvfs.translatePath(ADDON.getAddonInfo("path"))
-PROFILE  = ADDON.getAddonInfo("profile")
-ICON     = os.path.join(HOME, "icon.png")
-TEMP     = xbmcvfs.translatePath(os.path.join(PROFILE, "temp_dl"))
+ADDON = xbmcaddon.Addon(ADDON_ID)
+TITLE = ADDON.getAddonInfo("name")
+VERSION = ADDON.getAddonInfo("version")
+HOME = xbmcvfs.translatePath(ADDON.getAddonInfo("path"))
+PROFILE = ADDON.getAddonInfo("profile")
+ICON = os.path.join(HOME, "icon.png")
+TEMP = xbmcvfs.translatePath(os.path.join(PROFILE, "temp_dl"))
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # Kodi version detection
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 def _get_kodi_version():
     """Return (major, minor) integers for the running Kodi build."""
@@ -86,7 +87,7 @@ def log(text):
     """Write a prefixed message to kodi.log."""
     try:
         message = "%s V%s : %s" % (TITLE, VERSION, str(text))
-        level   = xbmc.LOGNONE if DEBUG else xbmc.LOGDEBUG
+        level = xbmc.LOGNONE if DEBUG else xbmc.LOGDEBUG
         xbmc.log(message, level)
     except Exception:
         pass
@@ -106,17 +107,15 @@ def log(text):
 # ══════════════════════════════════════════════════════════════════════════════
 
 STREAM_HEADERS = {
-    "Host":       "listen.musicmp3.ru",
-    "Range":      "bytes=0-",
+    "Host": "listen.musicmp3.ru",
     "User-Agent": (
-        "Mozilla/5.0 (Windows NT 10.0; WOW64; rv:44.0) "
-        "Gecko/20100101 Firefox/44.0"
+        "Mozilla/5.0 (Windows NT 10.0; WOW64; rv:44.0) Gecko/20100101 Firefox/44.0"
     ),
     "Accept": (
         "audio/webm,audio/ogg,audio/wav,audio/*;q=0.9,"
         "application/ogg;q=0.7,video/*;q=0.6,*/*;q=0.5"
     ),
-    "Referer": "https://www.goldenmp3.ru",
+    "Referer": "https://musicmp3.ru/",
 }
 
 
@@ -137,31 +136,16 @@ def build_stream_url(url):
     if "listen.musicmp3.ru" not in url:
         return url
 
-    player_headers = {
-        k: v for k, v in STREAM_HEADERS.items()
-        if k != "Range"
-    }
+    player_headers = {k: v for k, v in STREAM_HEADERS.items() if k != "Range"}
     header_string = "&".join(
-        "%s=%s" % (k, urllib.parse.quote_plus(v))
-        for k, v in player_headers.items()
+        "%s=%s" % (k, urllib.parse.quote_plus(v)) for k, v in player_headers.items()
     )
     return url + "|" + header_string
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-# Downloader slot management
-#
-# Kodi window properties (on the global window 10000) are used as a lightweight
-# IPC bus between the main plugin thread and the background Downloader threads.
-#
-#   PROPERTY % i == ""           → slot i is free
-#   PROPERTY % i == "Downloading"→ slot i is actively writing bytes to disk
-#   PROPERTY % i == "Signal"     → the main thread wants slot i to stop
-# ══════════════════════════════════════════════════════════════════════════════
-
-PROPERTY        = "MP3_DOWNLOADER_STATE_%d"
-RESOLVING       = "MP3_RESOLVING"
-MAX_DOWNLOADERS = 3
+PROPERTY = "MP3_DOWNLOADER_STATE_%d"
+RESOLVING = "MP3_RESOLVING"
+MAX_DOWNLOADERS = 1
 
 
 def getFreeSlot():
@@ -175,7 +159,8 @@ def getFreeSlot():
 def getNmrDownloaders():
     """Return the number of currently active downloader threads."""
     return sum(
-        1 for i in range(MAX_DOWNLOADERS)
+        1
+        for i in range(MAX_DOWNLOADERS)
         if xbmcgui.Window(10000).getProperty(PROPERTY % i)
     )
 
@@ -207,6 +192,7 @@ def stopDownloaders():
 # ══════════════════════════════════════════════════════════════════════════════
 # File utilities
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 def deleteFile(filename):
     """
@@ -251,12 +237,12 @@ def createFilename(title, artist, album, url):
     if ADDON.getSetting("keep_downloads") == "false":
         return os.path.join(TEMP, createMD5(url))
 
-    title  = clean(title)
+    title = clean(title)
     artist = clean(artist)
-    album  = clean(album)
+    album = clean(album)
 
     use_custom = ADDON.getSetting("custom_directory") == "true"
-    folder     = ADDON.getSetting("music_dir") if use_custom else TEMP
+    folder = ADDON.getSetting("music_dir") if use_custom else TEMP
 
     if ADDON.getSetting("folder_structure") == "0":
         base = os.path.join(folder, artist, album)
@@ -290,6 +276,7 @@ def resetCache():
 # File size verification
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 def _file_is_unavailable(filename):
     """
     Return True when the downloaded bytes are actually an HTML error page
@@ -319,7 +306,7 @@ def verifyFileSize(filename):
         return True
 
     precache_kb = int(ADDON.getSetting("pre-cache").replace("K", ""))
-    translated  = xbmcvfs.translatePath(filename)
+    translated = xbmcvfs.translatePath(filename)
 
     log("verifyFileSize: waiting for %s (threshold %d KB)" % (translated, precache_kb))
 
@@ -350,6 +337,7 @@ def verifyFileSize(filename):
 # ══════════════════════════════════════════════════════════════════════════════
 # Download orchestration
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 def startFile(title, artist, album, track, url, filename):
     """
@@ -427,11 +415,11 @@ def fetchNext(posn):
         return fetchNext(posn + 1)
 
     try:
-        title    = urllib.parse.unquote_plus(params["title"])
-        artist   = urllib.parse.unquote_plus(params["artist"])
-        album    = urllib.parse.unquote_plus(params["album"])
-        track    = urllib.parse.unquote_plus(params["track"])
-        url      = urllib.parse.unquote_plus(params["url"])
+        title = urllib.parse.unquote_plus(params["title"])
+        artist = urllib.parse.unquote_plus(params["artist"])
+        album = urllib.parse.unquote_plus(params["album"])
+        track = urllib.parse.unquote_plus(params["track"])
+        url = urllib.parse.unquote_plus(params["url"])
         filename = urllib.parse.unquote_plus(params["filename"])
     except KeyError as missing:
         log("fetchNext: missing required param %s at position %d" % (missing, posn))
@@ -449,6 +437,7 @@ def fetchNext(posn):
 # ══════════════════════════════════════════════════════════════════════════════
 # URL / query string helpers
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 def _parse_query(url):
     """
@@ -476,9 +465,10 @@ getParams = _parse_query
 # ListItem factory
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 def getListItem(
-    title, artist, album, track, image, duration,
-    url, fanart, isPlayable, useDownload
+    title, artist, album, track, image, duration, url, fanart, isPlayable, useDownload,
+    block=True,
 ):
     """
     Build and return a ``(resolved_url, ListItem)`` pair ready for Kodi.
@@ -489,28 +479,50 @@ def getListItem(
        already exists on disk, serve it directly.  Kodi never makes a network
        request, playback is instant, and there is no risk of a 403 error.
 
-    2. Header-augmented remote URL — if no local cache exists (or *useDownload*
-       is False), the CDN URL is returned with the required HTTP headers
-       appended using Kodi's pipe syntax (``url|Key=Value&...``).  This allows
-       Kodi's internal PAPlayer to open listen.musicmp3.ru streams without
-       receiving a 403 Forbidden rejection.
+    2. Blocking pre-cache — if *useDownload* is True, *block* is True, and no
+       cached copy exists, start a background Downloader thread and wait for
+       the pre-cache threshold (configured in add-on settings).  Once enough
+       bytes are on disk, Kodi plays from the local file while the Downloader
+       finishes the rest in the background.  This avoids CDN access-control
+       blocks entirely.
 
-    Previously this function ignored the *useDownload* parameter entirely and
-    always returned the bare remote URL — causing every playback attempt to
-    fail with a 403.
+    3. Header-augmented remote URL — if no local cache exists and blocking
+       pre-cache is disabled or times out, the CDN URL is returned with the
+       required HTTP headers appended using Kodi's pipe syntax
+       (``url|Key=Value&...``).
     """
     resolved_url = url
 
     if "listen.musicmp3.ru" in url:
         if useDownload:
             filename = createFilename(title, artist, album, url)
-            local    = xbmcvfs.translatePath(filename)
-            if xbmcvfs.exists(local):
+            local = xbmcvfs.translatePath(filename)
+            if xbmcvfs.exists(local) and xbmcvfs.File(local).size() > 100 * 1024:
                 log("getListItem: cache hit — serving '%s' from %s" % (title, local))
                 resolved_url = local
             else:
-                log("getListItem: cache miss — using header-augmented URL for '%s'" % title)
-                resolved_url = build_stream_url(url)
+                if xbmcvfs.exists(local):
+                    log(
+                        "getListItem: partial file (%d bytes) — re-downloading '%s'"
+                        % (xbmcvfs.File(local).size(), title)
+                    )
+                log("getListItem: cache miss — downloading '%s' in background" % title)
+                Downloader(title, artist, album, track, url, filename).start()
+                if block:
+                    if verifyFileSize(filename):
+                        log(
+                            "getListItem: pre-cache threshold met — "
+                            "serving cached '%s'" % title
+                        )
+                        resolved_url = local
+                    else:
+                        log(
+                            "getListItem: pre-cache timed out — "
+                            "falling back to URL for '%s'" % title
+                        )
+                        resolved_url = build_stream_url(url)
+                else:
+                    resolved_url = build_stream_url(url)
         else:
             resolved_url = build_stream_url(url)
 
@@ -520,9 +532,9 @@ def getListItem(
         "music",
         {"Title": title, "Artist": artist, "Album": album, "Duration": duration},
     )
-    liz.setProperty("mimetype",     "audio/mpeg")
+    liz.setProperty("mimetype", "audio/mpeg")
     liz.setProperty("fanart_image", fanart)
-    liz.setProperty("IsPlayable",   isPlayable)
+    liz.setProperty("IsPlayable", isPlayable)
 
     return resolved_url, liz
 
@@ -531,13 +543,16 @@ def getListItem(
 # Plugin URL resolver  (mode = 999)
 # ══════════════════════════════════════════════════════════════════════════════
 
+
 def play(sys, params):
     """
     Resolve a mode=999 plugin URL to a playable path and hand it to Kodi.
 
     Resolution order (same as getListItem):
         1. Local cached file if *filename* param is present and the file exists.
-        2. Header-augmented remote URL as a fallback.
+        2. Blocking pre-cache — wait for the background Downloader to reach
+           the pre-cache threshold, then serve from the local file.
+        3. Header-augmented remote URL as a last-resort fallback.
 
     A try/finally block guarantees that the RESOLVING window property is always
     cleared, even if an unexpected exception occurs during resolution.
@@ -546,12 +561,12 @@ def play(sys, params):
     xbmcgui.Window(10000).setProperty(RESOLVING, RESOLVING)
 
     try:
-        title    = urllib.parse.unquote_plus(params["title"])
-        artist   = urllib.parse.unquote_plus(params["artist"])
-        album    = urllib.parse.unquote_plus(params["album"])
+        title = urllib.parse.unquote_plus(params["title"])
+        artist = urllib.parse.unquote_plus(params["artist"])
+        album = urllib.parse.unquote_plus(params["album"])
         duration = urllib.parse.unquote_plus(params["duration"])
-        image    = urllib.parse.unquote_plus(params["image"])
-        url      = urllib.parse.unquote_plus(params["url"])
+        image = urllib.parse.unquote_plus(params["image"])
+        url = urllib.parse.unquote_plus(params["url"])
         filename = urllib.parse.unquote_plus(params.get("filename", ""))
 
         # Determine the best available path for this track.
@@ -561,23 +576,33 @@ def play(sys, params):
                 log("play: cache hit — serving '%s' from %s" % (title, local))
                 resolved_url = local
             else:
-                log("play: cache miss — using header-augmented URL for '%s'" % title)
-                resolved_url = build_stream_url(url)
+                log("play: cache miss — waiting for pre-cache on '%s'" % title)
+                if verifyFileSize(filename):
+                    log("play: pre-cache threshold met — serving cached '%s'" % title)
+                    resolved_url = local
+                else:
+                    log(
+                        "play: pre-cache timed out — "
+                        "using header-augmented URL for '%s'" % title
+                    )
+                    resolved_url = build_stream_url(url)
         else:
             resolved_url = build_stream_url(url)
 
         liz = xbmcgui.ListItem(title, path=resolved_url)
-        liz.setArt({
-            "icon":   image,
-            "thumb":  image,
-            "poster": image,
-            "fanart": image,
-        })
+        liz.setArt(
+            {
+                "icon": image,
+                "thumb": image,
+                "poster": image,
+                "fanart": image,
+            }
+        )
         liz.setInfo(
             "music",
             {"Title": title, "Artist": artist, "Album": album, "Duration": duration},
         )
-        liz.setProperty("mimetype",   "audio/mpeg")
+        liz.setProperty("mimetype", "audio/mpeg")
         liz.setProperty("IsPlayable", "true")
 
         log("play: setResolvedUrl → %s" % resolved_url)
@@ -595,6 +620,7 @@ def play(sys, params):
 # ══════════════════════════════════════════════════════════════════════════════
 # Downloader thread
 # ══════════════════════════════════════════════════════════════════════════════
+
 
 class Downloader(threading.Thread):
     """
@@ -617,14 +643,14 @@ class Downloader(threading.Thread):
 
     def __init__(self, title, artist, album, track, url, filename):
         super().__init__(daemon=True)
-        self._signal  = False
-        self.title    = title
-        self.artist   = artist
-        self.album    = album
-        self.track    = int(track) if str(track).isdigit() else 0
-        self.url      = url
+        self._signal = False
+        self.title = title
+        self.artist = artist
+        self.album = album
+        self.track = int(track) if str(track).isdigit() else 0
+        self.url = url
         self.filename = xbmcvfs.translatePath(filename)
-        self.slot     = -1
+        self.slot = -1
         self.complete = False
 
     # ── Stop signalling ───────────────────────────────────────────────────────
@@ -685,8 +711,7 @@ class Downloader(threading.Thread):
             log("Downloader[%d]: complete — %s" % (self.slot, self.filename))
 
         except requests.HTTPError as e:
-            log("Downloader[%d]: HTTP %d — %s"
-                % (self.slot, e.response.status_code, e))
+            log("Downloader[%d]: HTTP %d — %s" % (self.slot, e.response.status_code, e))
             xbmcgui.Window(10000).setProperty(self.filename, "EXCEPTION")
 
         except Exception as e:
@@ -719,8 +744,8 @@ class Downloader(threading.Thread):
         log("Downloader[%d]: applying ID3 tags to '%s'" % (self.slot, self.title))
 
         basename = self.filename.rsplit(os.sep, 1)[-1]
-        temp     = os.path.join(TEMP, basename)
-        do_copy  = self.filename != temp
+        temp = os.path.join(TEMP, basename)
+        do_copy = self.filename != temp
 
         try:
             if do_copy:
@@ -729,22 +754,22 @@ class Downloader(threading.Thread):
             # Strip the leading "N. " track-number prefix from the displayed title
             # so that ID3 title and track-number tags do not duplicate information.
             tag_title = self.title
-            dot_pos   = self.title.find(". ")
+            dot_pos = self.title.find(". ")
             if dot_pos != -1:
-                tag_title = self.title[dot_pos + 2:]
+                tag_title = self.title[dot_pos + 2 :]
 
             audio = MP3(temp, ID3=EasyID3)
-            audio["title"]       = tag_title
-            audio["artist"]      = self.artist
-            audio["album"]       = self.album
+            audio["title"] = tag_title
+            audio["artist"] = self.artist
+            audio["album"] = self.album
             audio["tracknumber"] = str(self.track)
-            audio["date"]        = ""
-            audio["genre"]       = ""
+            audio["date"] = ""
+            audio["genre"] = ""
             audio.save(v1=2)
             log("Downloader[%d]: tags saved — %s" % (self.slot, audio.pprint()))
 
             if do_copy:
-                del audio            # release mutagen's file handle before moving
+                del audio  # release mutagen's file handle before moving
                 deleteFile(self.filename)
                 xbmcvfs.copy(temp, self.filename)
                 deleteFile(temp)
@@ -766,8 +791,10 @@ class Downloader(threading.Thread):
             log("Downloader: no free slot — skipping '%s'" % self.title)
             return
 
-        log("Downloader[%d]: title='%s'  url=%s  file=%s"
-            % (self.slot, self.title, self.url, self.filename))
+        log(
+            "Downloader[%d]: title='%s'  url=%s  file=%s"
+            % (self.slot, self.title, self.url, self.filename)
+        )
 
         try:
             self._download()
@@ -779,8 +806,10 @@ class Downloader(threading.Thread):
             log("Downloader[%d]: '%s' finished" % (self.slot, self.title))
             self._apply_id3()
         else:
-            log("Downloader[%d]: '%s' cancelled — removing partial file"
-                % (self.slot, self.title))
+            log(
+                "Downloader[%d]: '%s' cancelled — removing partial file"
+                % (self.slot, self.title)
+            )
             deleteFile(self.filename)
 
 
@@ -788,7 +817,7 @@ class Downloader(threading.Thread):
 # Background service  (runs when this file is executed directly by Kodi)
 # ══════════════════════════════════════════════════════════════════════════════
 
-_COUNT   = 0
+_COUNT = 0
 _STARTED = False
 _RETRIES = 25
 
@@ -809,7 +838,7 @@ def _service_clear():
     else:
         log("service: clear skipped — RESOLVING property is active")
 
-    _COUNT   = 0
+    _COUNT = 0
     _STARTED = False
 
 
