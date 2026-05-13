@@ -421,6 +421,7 @@ def fetchNext(posn):
         track = urllib.parse.unquote_plus(params["track"])
         url = urllib.parse.unquote_plus(params["url"])
         filename = urllib.parse.unquote_plus(params["filename"])
+
     except KeyError as missing:
         log("fetchNext: missing required param %s at position %d" % (missing, posn))
         return
@@ -467,7 +468,16 @@ getParams = _parse_query
 
 
 def getListItem(
-    title, artist, album, track, image, duration, url, fanart, isPlayable, useDownload,
+    title,
+    artist,
+    album,
+    track,
+    image,
+    duration,
+    url,
+    fanart,
+    isPlayable,
+    useDownload,
     block=True,
 ):
     """

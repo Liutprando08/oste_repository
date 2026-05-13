@@ -1178,8 +1178,26 @@ def play_song(url, name, songname, artist, album, iconimage, dur, clear):
         resolved_url = stored_path
         liz.setPath(stored_path)  # keep ListItem path in sync with resolved url
 
+    plugin_url = (
+        sys.argv[0]
+        + "?mode=999"
+        + "&url="
+        + urllib.parse.quote_plus(url)
+        + "&title="
+        + urllib.parse.quote_plus(songname)
+        + "&artist="
+        + urllib.parse.quote_plus(artist)
+        + "&album="
+        + urllib.parse.quote_plus(album)
+        + "&duration="
+        + str(dur)
+        + "&image="
+        + urllib.parse.quote_plus(iconimage)
+    )
+    liz = xbmcgui.ListItem(songname, path=plugin_url)
+    liz.setProperty("IsPlayable", "true")
     pl = get_XBMCPlaylist(clear)
-    pl.add(resolved_url, liz)
+    pl.add(plugin_url, liz)
     xbmc.Player().play(pl)
 
 
