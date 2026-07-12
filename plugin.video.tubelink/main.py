@@ -388,6 +388,7 @@ def queue_related_videos(vid_id, quality="720", count=7, title="", tot=0):
     try:
         if tot % count != 0:
             tot = tot + 1
+            return
         with yt_dlp.YoutubeDL(flat_opts) as ydl:
             info = ydl.extract_info(
                 f"https://www.youtube.com/watch?v={vid_id}&list=RD{vid_id}",
