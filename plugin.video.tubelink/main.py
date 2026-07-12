@@ -376,7 +376,7 @@ def _ytsearch_fallback(vid_id, title, count):
     return candidates
 
 
-def queue_related_videos(vid_id, quality="720", count=7, title=""):
+def queue_related_videos(vid_id, quality="720", count=7, title="", tot=0):
     flat_opts = {
         "quiet": True,
         "no_warnings": True,
@@ -384,7 +384,10 @@ def queue_related_videos(vid_id, quality="720", count=7, title=""):
         "extract_flat": True,
         "socket_timeout": 15,
     }
+
     try:
+        if tot % count != 0:
+            tot = tot + 1
         with yt_dlp.YoutubeDL(flat_opts) as ydl:
             info = ydl.extract_info(
                 f"https://www.youtube.com/watch?v={vid_id}&list=RD{vid_id}",
@@ -449,6 +452,7 @@ def router():
         remove_saved(params.get("index", "0"))
     elif action == "play":
         play(params["id"], params.get("quality", "720"))
+        tot = 0
         _queue_stop_event.clear()
         threading.Thread(
             target=queue_related_videos,
@@ -457,6 +461,7 @@ def router():
                 params.get("quality", "720"),
                 7,
                 params.get("title", ""),
+                tot,
             ),
             daemon=True,
         ).start()
