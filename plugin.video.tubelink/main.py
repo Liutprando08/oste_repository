@@ -79,6 +79,41 @@ COUNTRY = [
 
 _queue_stop_event = threading.Event()
 _queue_lock = threading.Lock()
+_queue_thread = None
+_total_queued = 0
+MAX_AUTO_QUEUE = (
+    21  # cap total auto-queued songs per "session" so the playlist doesn't grow forever
+)
+_HOME_WINDOW = xbmcgui.Window(10000)
+_PROP_TOTAL_QUEUED = "plugin.video.tubelink.total_queued"
+_PROP_RECENT_QUEUED = "plugin.video.tubelink.recent_queued"
+
+
+def _get_total_queued():
+    try:
+        return int(_HOME_WINDOW.getProperty(_PROP_TOTAL_QUEUED) or "0")
+    except ValueError:
+        return 0
+
+
+def _set_total_queued(n):
+    _HOME_WINDOW.setProperty(_PROP_TOTAL_QUEUED, str(n))
+
+
+def _get_recent_queued():
+    raw = _HOME_WINDOW.getProperty(_PROP_RECENT_QUEUED)
+    if not raw:
+        return []
+    try:
+        return json.loads(raw)
+    except (ValueError, TypeError):
+        return []
+
+
+def _add_recent_queued(vid_id):
+    ids = _get_recent_queued()
+    ids.append(vid_id)
+    _HOME_WINDOW.setProperty(_PROP_RECENT_QUEUED, json.dumps(ids[-10:]))
 
 
 def get_country():
@@ -109,7 +144,7 @@ def load_save():
         with xbmcvfs.File(save, "r") as f:
             content = f.read()
         return json.loads(content) if content.strip() else []
-    except (json.JSONDecodeError, Exception):
+    except Exception:
         return []
 
 
@@ -151,14 +186,17 @@ def search(query=None, page=1):
             xbmcplugin.endOfDirectory(HANDLE, succeeded=False)
             return
     try:
-        offset = (page - 1) * 20
-        search_query = (
-            f"ytsearch20:start{offset}:{query}" if offset > 0 else f"ytsearch20:{query}"
-        )
+        # yt-dlp's ytsearchN: prefix only supports a result count, not an
+        # offset - there is no "start{offset}:" syntax. To page through
+        # results we fetch enough results to cover this page and slice off
+        # the last 20.
+        total = page * 20
+        search_query = f"ytsearch{total}:{query}"
         opts = ydl_opts_base()
         with yt_dlp.YoutubeDL(opts) as ydl:
             result = ydl.extract_info(search_query, download=False)
-            entries = result.get("entries", [])
+            all_entries = result.get("entries", [])
+        entries = all_entries[(page - 1) * 20 : total]
         listVideos(entries, mode="search", query=query, page=page)
     except Exception as e:
         xbmcgui.Dialog().notification("Search error", str(e)[:100])
@@ -168,15 +206,16 @@ def search(query=None, page=1):
 def trending(page=1):
     try:
         country = get_country()
-        offset = (page - 1) * 20
-        trend_query = f"ytsearch20:start{offset}:trending in {country}"
+        total = page * 20
+        trend_query = f"ytsearch{total}:trending in {country}"
         opts = ydl_opts_base()
         with yt_dlp.YoutubeDL(opts) as ydl:
             result = ydl.extract_info(
                 trend_query,
                 download=False,
             )
-            entries = result.get("entries", [])
+            all_entries = result.get("entries", [])
+        entries = all_entries[(page - 1) * 20 : total]
         listVideos(entries, mode="trending", page=page)
     except Exception as e:
         xbmcgui.Dialog().notification("Trending error", str(e)[:100])
@@ -236,6 +275,11 @@ def listVideos(entries, mode=None, query=None, page=1):
 
 def save_video(vid_id, title, thumb, duration_str):
     videos = load_save()
+    if any(v.get("id") == vid_id for v in videos):
+        xbmcgui.Dialog().notification(
+            "TubeLink", "Already saved", xbmcgui.NOTIFICATION_INFO, 2000
+        )
+        return
     videos.append(
         {
             "id": vid_id,
@@ -336,7 +380,13 @@ def play(vid_id, quality):
 
 
 def queue_item(next_id, title="", quality="720"):
-    params = {"action": "play", "id": next_id, "quality": quality, "title": title}
+    params = {
+        "action": "play",
+        "id": next_id,
+        "quality": quality,
+        "title": title,
+        "auto": "1",
+    }
     plugin_url = BASE_URL + "?" + urlencode(params)
 
     li = xbmcgui.ListItem(label=title or next_id, path=plugin_url)
@@ -376,7 +426,7 @@ def _ytsearch_fallback(vid_id, title, count):
     return candidates
 
 
-def queue_related_videos(vid_id, quality="720", count=7, title="", tot=0):
+def queue_related_videos(vid_id, quality="720", count=7, title=""):
     flat_opts = {
         "quiet": True,
         "no_warnings": True,
@@ -386,9 +436,6 @@ def queue_related_videos(vid_id, quality="720", count=7, title="", tot=0):
     }
 
     try:
-        if tot % count != 0:
-            tot = tot + 1
-            return
         with yt_dlp.YoutubeDL(flat_opts) as ydl:
             info = ydl.extract_info(
                 f"https://www.youtube.com/watch?v={vid_id}&list=RD{vid_id}",
@@ -426,6 +473,9 @@ def queue_related_videos(vid_id, quality="720", count=7, title="", tot=0):
             continue
 
     if queued > 0:
+        with _queue_lock:
+            global _total_queued
+            _total_queued += queued
         msg = f"{queued} related video{'s' if queued > 1 else ''} queued"
         xbmcgui.Dialog().notification("TubeLink", msg, xbmcgui.NOTIFICATION_INFO, 3000)
 
@@ -453,19 +503,34 @@ def router():
         remove_saved(params.get("index", "0"))
     elif action == "play":
         play(params["id"], params.get("quality", "720"))
-        tot = 0
-        _queue_stop_event.clear()
-        threading.Thread(
-            target=queue_related_videos,
-            args=(
-                params["id"],
-                params.get("quality", "720"),
-                7,
-                params.get("title", ""),
-                tot,
-            ),
-            daemon=True,
-        ).start()
+
+        is_auto = params.get("auto") == "1"
+
+        # A manual pick (from search/trending/saved) starts a fresh session,
+        # so reset the counter. An auto-played item (one we queued
+        # ourselves) keeps counting against the same cap. This counter is
+        # stored on the Kodi home window (see _get/_set_total_queued)
+        # because each play runs in its own fresh process - a plain module
+        # global would reset to 0 every time and never actually cap anything.
+        if not is_auto:
+            _set_total_queued(0)
+
+        remaining = MAX_AUTO_QUEUE - _get_total_queued()
+        if remaining > 0:
+            # Not a daemon thread: if this were daemon=True, the interpreter
+            # can exit (killing the thread mid-work) the instant the main
+            # thread falls off the end of router(), which happens almost
+            # immediately after start(). Leaving it non-daemon keeps the
+            # process alive until the thread actually finishes queueing.
+            threading.Thread(
+                target=queue_related_videos,
+                args=(
+                    params["id"],
+                    params.get("quality", "720"),
+                    min(7, remaining),
+                    params.get("title", ""),
+                ),
+            ).start()
 
 
 router()

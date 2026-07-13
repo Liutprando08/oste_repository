@@ -974,7 +974,7 @@ def play_album(name, url, iconimage, mix, clear):
             match.append(("", rel, "", "", trn, "", artist, songname, dur))
     nItem = len(match)
     count = 0
-    if browse == True:
+    if browse:
         for track, id, songurl, meta, d1, album, artist, songname, dur in match:
             count += 1
             if "musicmp3" in origurl:
@@ -1060,49 +1060,37 @@ def play_album(name, url, iconimage, mix, clear):
             title = "%s. %s" % (trn, songname)
             dur = str((int(dur.split(":")[0]) * 60) + int(dur.split(":")[1]))
         addDirAudio(title, url, 10, iconimage, songname, artist, album, dur, "")
-        block = count == 1
-        if "musicmp3" in origurl:
-            url, liz = playerMP3.getListItem(
-                songname,
-                artist,
-                album,
-                trn,
-                iconimage,
-                dur,
-                url,
-                fanart,
-                "true",
-                True,
-                block=block,
-            )
-        elif "goldenmp3" in origurl:
-            url, liz = playerMP3.getListItem(
-                ntrack,
-                songname,
-                album,
-                trn,
-                iconimage,
-                dur,
-                url,
-                fanart,
-                "true",
-                True,
-                block=block,
-            )
-        else:
-            url, liz = playerMP3.getListItem(
-                songname,
-                artist,
-                album,
-                trn,
-                iconimage,
-                dur,
-                url,
-                fanart,
-                "true",
-                True,
-                block=block,
-            )
+        filename = playerMP3.createFilename(songname, artist, album, url)
+        plugin_url = (
+            sys.argv[0]
+            + "?mode=999"
+            + "&url="
+            + urllib.parse.quote_plus(url)
+            + "&title="
+            + urllib.parse.quote_plus(songname)
+            + "&artist="
+            + urllib.parse.quote_plus(artist)
+            + "&album="
+            + urllib.parse.quote_plus(album)
+            + "&track="
+            + urllib.parse.quote_plus(trn)
+            + "&filename="
+            + urllib.parse.quote_plus(filename)
+            + "&duration="
+            + urllib.parse.quote_plus(dur)
+            + "&image="
+            + urllib.parse.quote_plus(iconimage)
+        )
+        liz = xbmcgui.ListItem(songname)
+        liz.setArt({"icon": iconimage, "thumb": iconimage})
+        liz.setInfo(
+            "music",
+            {"Title": songname, "Artist": artist, "Album": album, "Duration": dur},
+        )
+        liz.setProperty("mimetype", "audio/mpeg")
+        liz.setProperty("IsPlayable", "true")
+        if not HIDE_FANART:
+            liz.setProperty("fanart_image", fanart)
         if FOLDERSTRUCTURE == "0":
             stored_path = os.path.join(MUSIC_DIR, artist, album, songname + ".mp3")
         else:
@@ -1110,9 +1098,9 @@ def play_album(name, url, iconimage, mix, clear):
                 MUSIC_DIR, artist + " - " + album, songname + ".mp3"
             )
         if os.path.exists(stored_path):
-            url = stored_path
-            liz.setPath(stored_path)  # keep ListItem path in sync with resolved url
-        playlist.append((url, liz))
+            plugin_url = stored_path
+            liz.setPath(stored_path)
+        playlist.append((plugin_url, liz))
         if mix != "mix":
             progress = len(playlist) / float(nItem) * 100
             dp.update(int(progress), "Adding to Your Playlist" + title)
@@ -1120,14 +1108,10 @@ def play_album(name, url, iconimage, mix, clear):
                 return
     pl = get_XBMCPlaylist(clear)
     for url, liz in playlist:
-        if pl.size() < 1:
-            pl.add(url, liz)
-            xbmc.Player().play(pl)
-        else:
-            pl.add(url, liz)
-        # if pl.size() > 3:
-        #    break
-    if mix != "mix":  # ← guard this, not unconditional
+        pl.add(url, liz)
+    if playlist:
+        xbmc.Player().play(pl)
+    if mix != "mix":
         dp.close()
 
 

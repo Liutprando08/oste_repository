@@ -145,7 +145,7 @@ def build_stream_url(url):
 
 PROPERTY = "MP3_DOWNLOADER_STATE_%d"
 RESOLVING = "MP3_RESOLVING"
-MAX_DOWNLOADERS = 1
+MAX_DOWNLOADERS = 2
 
 
 def getFreeSlot():
@@ -391,7 +391,7 @@ def fetchNext(posn):
     """
     log("fetchNext: scanning playlist from position %d" % posn)
 
-    if getNmrDownloaders() == MAX_DOWNLOADERS or posn == 0:
+    if getNmrDownloaders() > 0 or posn == 0:
         return
 
     playlist = xbmc.PlayList(xbmc.PLAYLIST_MUSIC)
@@ -428,8 +428,12 @@ def fetchNext(posn):
 
     local = xbmcvfs.translatePath(filename)
     if xbmcvfs.exists(local):
-        log("fetchNext: '%s' already cached — skipping" % title)
-        return
+        try:
+            if xbmcvfs.File(local).size() > 50 * 1024:
+                log("fetchNext: '%s' already cached — skipping" % title)
+                return
+        except:
+            return
 
     log("fetchNext: pre-fetching '%s' → %s" % (title, filename))
     Downloader(title, artist, album, track, url, filename).start()
@@ -480,59 +484,28 @@ def getListItem(
     useDownload,
     block=True,
 ):
-    """
-    Build and return a ``(resolved_url, ListItem)`` pair ready for Kodi.
-
-    URL resolution priority
-    -----------------------
-    1. Local cache — if *useDownload* is True and a cached copy of the track
-       already exists on disk, serve it directly.  Kodi never makes a network
-       request, playback is instant, and there is no risk of a 403 error.
-
-    2. Blocking pre-cache — if *useDownload* is True, *block* is True, and no
-       cached copy exists, start a background Downloader thread and wait for
-       the pre-cache threshold (configured in add-on settings).  Once enough
-       bytes are on disk, Kodi plays from the local file while the Downloader
-       finishes the rest in the background.  This avoids CDN access-control
-       blocks entirely.
-
-    3. Header-augmented remote URL — if no local cache exists and blocking
-       pre-cache is disabled or times out, the CDN URL is returned with the
-       required HTTP headers appended using Kodi's pipe syntax
-       (``url|Key=Value&...``).
-    """
     resolved_url = url
 
     if "listen.musicmp3.ru" in url:
         if useDownload:
             filename = createFilename(title, artist, album, url)
             local = xbmcvfs.translatePath(filename)
-            if xbmcvfs.exists(local) and xbmcvfs.File(local).size() > 100 * 1024:
-                log("getListItem: cache hit — serving '%s' from %s" % (title, local))
-                resolved_url = local
-            else:
-                if xbmcvfs.exists(local):
+            Downloader(title, artist, album, track, url, filename).start()
+            if block:
+                if verifyFileSize(filename):
                     log(
-                        "getListItem: partial file (%d bytes) — re-downloading '%s'"
-                        % (xbmcvfs.File(local).size(), title)
+                        "getListItem: pre-cache threshold met — "
+                        "serving cached '%s'" % title
                     )
-                log("getListItem: cache miss — downloading '%s' in background" % title)
-                Downloader(title, artist, album, track, url, filename).start()
-                if block:
-                    if verifyFileSize(filename):
-                        log(
-                            "getListItem: pre-cache threshold met — "
-                            "serving cached '%s'" % title
-                        )
-                        resolved_url = local
-                    else:
-                        log(
-                            "getListItem: pre-cache timed out — "
-                            "falling back to URL for '%s'" % title
-                        )
-                        resolved_url = build_stream_url(url)
+                    resolved_url = local
                 else:
+                    log(
+                        "getListItem: pre-cache timed out — "
+                        "falling back to URL for '%s'" % title
+                    )
                     resolved_url = build_stream_url(url)
+            else:
+                resolved_url = build_stream_url(url)
         else:
             resolved_url = build_stream_url(url)
 
@@ -582,7 +555,10 @@ def play(sys, params):
         # Determine the best available path for this track.
         if filename:
             local = xbmcvfs.translatePath(filename)
-            if xbmcvfs.exists(local):
+            if not xbmcvfs.exists(local) or xbmcvfs.File(local).size() <= 100 * 1024:
+                track_param = urllib.parse.unquote_plus(params.get("track", "0"))
+                Downloader(title, artist, album, track_param, url, filename).start()
+            if xbmcvfs.exists(local) and xbmcvfs.File(local).size() > 100 * 1024:
                 log("play: cache hit — serving '%s' from %s" % (title, local))
                 resolved_url = local
             else:
@@ -662,6 +638,7 @@ class Downloader(threading.Thread):
         self.filename = xbmcvfs.translatePath(filename)
         self.slot = -1
         self.complete = False
+        self.slot_released = False
 
     # ── Stop signalling ───────────────────────────────────────────────────────
 
@@ -695,7 +672,9 @@ class Downloader(threading.Thread):
         """
         log("Downloader[%d]: starting — %s" % (self.slot, self.url))
         xbmcgui.Window(10000).setProperty(PROPERTY % self.slot, "Downloading")
-
+        precache_kb = int(ADDON.getSetting("pre-cache").replace("K", ""))
+        precache_bytes = precache_kb * 1024
+        bytes_written = 0
         f = None
         try:
             with closing(
@@ -709,14 +688,23 @@ class Downloader(threading.Thread):
             ) as response:
                 response.raise_for_status()  # immediately surface 4xx / 5xx errors
 
-                f = xbmcvfs.File(self.filename, "w")
+                f = open(self.filename, "wb")
                 for chunk in response.iter_content(chunk_size=8192):
                     if self._check_signal():
                         log("Downloader[%d]: aborted mid-stream" % self.slot)
                         return
                     if chunk:
                         f.write(chunk)
-
+                        f.flush()
+                        bytes_written += len(chunk)
+                        if not self.slot_released and bytes_written >= precache_bytes:
+                            xbmcgui.Window(10000).clearProperty(PROPERTY % self.slot)
+                            self.slot_released = True
+                            log(
+                                "Downloader[%d]: slot released after %d bytes"
+                                % (self.slot, bytes_written)
+                            )
+            f.flush()
             self.complete = True
             log("Downloader[%d]: complete — %s" % (self.slot, self.filename))
 
@@ -729,6 +717,8 @@ class Downloader(threading.Thread):
             xbmcgui.Window(10000).setProperty(self.filename, "EXCEPTION")
 
         finally:
+            if not self.slot_released:
+                xbmcgui.Window(10000).clearProperty(PROPERTY % self.slot)
             if f is not None:
                 try:
                     f.close()
@@ -809,8 +799,8 @@ class Downloader(threading.Thread):
         try:
             self._download()
         finally:
-            # Always release the slot, even if _download raised an exception.
-            xbmcgui.Window(10000).clearProperty(PROPERTY % self.slot)
+            if not self.slot_released:
+                xbmcgui.Window(10000).clearProperty(PROPERTY % self.slot)
 
         if self.complete:
             log("Downloader[%d]: '%s' finished" % (self.slot, self.title))
@@ -871,13 +861,21 @@ def _service_check():
 if __name__ == "__main__":
     log("service: started")
     _service_clear()
-
     monitor = xbmc.Monitor()
     while not monitor.abortRequested():
         if not _STARTED:
             _STARTED = xbmc.Player().isPlaying()
         else:
             _service_check()
+            player = xbmc.Player()
+            if player.isPlaying():
+                try:
+                    playlist = xbmc.PlayList(xbmc.PLAYLIST_MUSIC)
+                    cur = playlist.getposition()
+                    if cur >= 0:
+                        fetchNext(cur + 1)
+                except:
+                    pass
         xbmc.sleep(1000)
 
     log("service: abort requested — shutting down")
