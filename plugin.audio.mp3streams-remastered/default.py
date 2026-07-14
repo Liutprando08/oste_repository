@@ -39,34 +39,34 @@ QUEUE_ALBUMS = settings.default_queue_album()
 DOWNLOAD_LIST = settings.download_list()
 FOLDERSTRUCTURE = settings.folder_structure()
 fanart = xbmcvfs.translatePath(
-    os.path.join("special://home/addons/plugin.audio.mp3streams", "fanart.jpg")
+    os.path.join("special://home/addons/plugin.audio.mp3streams-remastered", "fanart.jpg")
 )
 art = (
     xbmcvfs.translatePath(
-        os.path.join("special://home/addons/plugin.audio.mp3streams", "art")
+        os.path.join("special://home/addons/plugin.audio.mp3streams-remastered", "art")
     )
     + "/"
 )
 artgenre = (
     xbmcvfs.translatePath(
-        os.path.join("special://home/addons/plugin.audio.mp3streams/art", "genre")
+        os.path.join("special://home/addons/plugin.audio.mp3streams-remastered/art", "genre")
     )
     + "/"
 )
 artbillboard = (
     xbmcvfs.translatePath(
-        os.path.join("special://home/addons/plugin.audio.mp3streams/art", "billboard")
+        os.path.join("special://home/addons/plugin.audio.mp3streams-remastered/art", "billboard")
     )
     + "/"
 )
 urllist = xbmcvfs.translatePath(
     os.path.join(
-        "special://home/addons/plugin.audio.mp3streams", "lists", "mp3url.list"
+        "special://home/addons/plugin.audio.mp3streams-remastered", "lists", "mp3url.list"
     )
 )
 audio_fanart = ""
 iconart = xbmcvfs.translatePath(
-    os.path.join("special://home/addons/plugin.audio.mp3streams", "icon.png")
+    os.path.join("special://home/addons/plugin.audio.mp3streams-remastered", "icon.png")
 )
 download_lock = os.path.join(MUSIC_DIR, "downloading.txt")
 xbmc_version = xbmc.getInfoLabel("System.BuildVersion")[:4]
@@ -401,7 +401,7 @@ def chart_lists(name, url):  # 102
                 )
             except:
                 iconimage = "http://www.billboard.com/sites/all/themes/bb/images/default/no-album.png"
-            if not "Single" in name and not "Best Songs of 2014" in text:
+            if "Single" not in name and "Best Songs of 2014" not in text:
                 addDir(
                     artist.replace("&amp;", "&") + " - " + title.replace("&amp;", "&"),
                     "url",
@@ -409,7 +409,7 @@ def chart_lists(name, url):  # 102
                     iconimage,
                     "",
                 )
-            elif not "Best Songs of 2014" in text:
+            elif "Best Songs of 2014" not in text:
                 addDir(
                     artist.replace("&amp;", "&") + " - " + title.replace("&amp;", "&"),
                     "url",
@@ -430,7 +430,7 @@ def chart_lists(name, url):  # 102
             except:
                 iconimage = "http://www.billboard.com/sites/all/themes/bb/images/default/no-album.png"
             text = "%s %s" % (artist, title)
-            if not "Single" in name and not "Best Songs of 2014" in text:
+            if "Single" not in name and "Best Songs of 2014" not in text:
                 addDir(
                     artist.replace("&amp;", "&") + " - " + title.replace("&amp;", "&"),
                     "url",
@@ -438,7 +438,7 @@ def chart_lists(name, url):  # 102
                     iconimage,
                     "",
                 )
-            elif not "Best Songs of 2014" in text:
+            elif "Best Songs of 2014" not in text:
                 addDir(
                     artist.replace("&amp;", "&") + " - " + title.replace("&amp;", "&"),
                     "url",
@@ -808,7 +808,10 @@ def search_songs(query):
         addDirAudio(title, url, 10, iconimage, song, artist, album, "", "")
         liz = xbmcgui.ListItem(song)
         liz.setArt({"icon": iconimage, "thumb": iconimage})
-        liz.setInfo("music", {"Title": song, "Artist": artist, "Album": album})
+        tag = liz.getMusicInfoTag()
+        tag.setTitle(song)
+        tag.setArtist(artist)
+        tag.setAlbum(album)
         liz.setProperty("mimetype", "audio/mpeg")
         liz.setProperty("fanart_image", audio_fanart)
         playlist.append((url, liz))
@@ -1083,10 +1086,12 @@ def play_album(name, url, iconimage, mix, clear):
         )
         liz = xbmcgui.ListItem(songname)
         liz.setArt({"icon": iconimage, "thumb": iconimage})
-        liz.setInfo(
-            "music",
-            {"Title": songname, "Artist": artist, "Album": album, "Duration": dur},
-        )
+        tag = liz.getMusicInfoTag()
+        tag.setTitle(songname)
+        tag.setArtist(artist)
+        tag.setAlbum(album)
+        if dur:
+            tag.setDuration(int(dur))
         liz.setProperty("mimetype", "audio/mpeg")
         liz.setProperty("IsPlayable", "true")
         if not HIDE_FANART:
@@ -1126,66 +1131,49 @@ def play_song(url, name, songname, artist, album, iconimage, dur, clear):
     """
     Resolve a single track URL and hand it to Kodi's music player.
 
-    getListItem() returns either a locally cached file path or a
-    header-augmented CDN URL — both safe for PAPlayer to open directly.
+    getListItem() returns a tuple of (resolved_url, liz) where *liz* is a
+    fully-populated ListItem with all music metadata, and *resolved_url*
+    is either a locally cached file path or a header-augmented CDN URL.
     """
     try:
         track = int(name[: name.find(".")])
     except (ValueError, TypeError):
         track = 0
 
-    # getListItem resolves to local cache or header-augmented URL automatically.
-    # block=True ensures the first track waits for pre-cache before playback.
     resolved_url, liz = playerMP3.getListItem(
-        songname,
-        artist,
-        album,
-        track,
-        iconimage,
-        dur,
-        url,
-        fanart,
-        "true",
-        True,
-        block=True,
+        songname, artist, album, track, iconimage, dur,
+        url, fanart, "true", True, block=True,
     )
 
-    # Override with a permanently stored file when keep_downloads is on and
-    # the file already exists from a previous session. Keep the ListItem path
-    # in sync so Kodi's Now Playing metadata is always correct.
     if FOLDERSTRUCTURE == "0":
-        stored_path = os.path.join(MUSIC_DIR, artist, album, name + ".mp3")
+        stored_path = os.path.join(MUSIC_DIR, artist, album, songname + ".mp3")
     else:
-        stored_path = os.path.join(MUSIC_DIR, artist + " - " + album, name + ".mp3")
+        stored_path = os.path.join(MUSIC_DIR, artist + " - " + album, songname + ".mp3")
 
     if os.path.exists(stored_path):
         resolved_url = stored_path
-        liz.setPath(stored_path)  # keep ListItem path in sync with resolved url
+        liz.setPath(stored_path)
 
+    filename = playerMP3.createFilename(songname, artist, album, url)
     plugin_url = (
         sys.argv[0]
         + "?mode=999"
-        + "&url="
-        + urllib.parse.quote_plus(url)
-        + "&title="
-        + urllib.parse.quote_plus(songname)
-        + "&artist="
-        + urllib.parse.quote_plus(artist)
-        + "&album="
-        + urllib.parse.quote_plus(album)
-        + "&duration="
-        + str(dur)
-        + "&image="
-        + urllib.parse.quote_plus(iconimage)
+        + "&url=" + urllib.parse.quote_plus(url)
+        + "&title=" + urllib.parse.quote_plus(songname)
+        + "&artist=" + urllib.parse.quote_plus(artist)
+        + "&album=" + urllib.parse.quote_plus(album)
+        + "&filename=" + urllib.parse.quote_plus(filename)
+        + "&duration=" + urllib.parse.quote_plus(str(dur or ""))
+        + "&image=" + urllib.parse.quote_plus(iconimage)
     )
-    liz = xbmcgui.ListItem(songname, path=plugin_url)
-    liz.setProperty("IsPlayable", "true")
+
+    liz.setPath(plugin_url)
     pl = get_XBMCPlaylist(clear)
     pl.add(plugin_url, liz)
     xbmc.Player().play(pl)
 
 
-def download_song(url, name, songname, artist, album, iconimage):
+def download_song(url, songname, artist, album):
     """
     Download a single track to the permanent music library directory.
 
@@ -1430,10 +1418,10 @@ def instant_mix():
                 list1 = list.split("<>")
                 try:
                     plname = list1[5]
-                    if not plname in menu_texts:
+                    if plname not in menu_texts:
                         menu_texts.append(plname)
                 except:
-                    if not "Ungrouped" in menu_texts:
+                    if "Ungrouped" not in menu_texts:
                         menu_texts.append("Ungrouped")
     menu_id = dialog.select("Select Group", menu_texts)
     if menu_id < 0:
@@ -1485,10 +1473,10 @@ def instant_mix_album():
                 list1 = list.split("<>")
                 try:
                     plname = list1[3]
-                    if not plname in menu_texts:
+                    if plname not in menu_texts:
                         menu_texts.append(plname)
                 except:
-                    if not "Ungrouped" in menu_texts:
+                    if "Ungrouped" not in menu_texts:
                         menu_texts.append("Ungrouped")
     menu_id = dialog.select("Select Group", menu_texts)
     if menu_id < 0:
@@ -1570,10 +1558,10 @@ def favourite_albums():
                 list1 = list.split("<>")
                 try:
                     plname = list1[3]
-                    if not plname in menu_texts:
+                    if plname not in menu_texts:
                         menu_texts.append(plname)
                 except:
-                    if not "Ungrouped" in menu_texts:
+                    if "Ungrouped" not in menu_texts:
                         menu_texts.append("Ungrouped")
     menu_id = dialog.select("Select Group", menu_texts)
     if menu_id < 0:
@@ -1615,10 +1603,10 @@ def favourite_songs():
                 list1 = list.split("<>")
                 try:
                     plname = list1[5]
-                    if not plname in menu_texts:
+                    if plname not in menu_texts:
                         menu_texts.append(plname)
                 except:
-                    if not "Ungrouped" in menu_texts:
+                    if "Ungrouped" not in menu_texts:
                         menu_texts.append("Ungrouped")
     menu_id = dialog.select("Select Group", menu_texts)
     if menu_id < 0:
@@ -1684,7 +1672,7 @@ def add_favourite(name, url, dir, text):
                     list1 = list.split("<>")
                     try:
                         plname = list1[3]
-                        if not plname in menu_texts:
+                        if plname not in menu_texts:
                             menu_texts.append(plname)
                     except:
                         pass
@@ -1724,7 +1712,7 @@ def add_favourite_song(name, url, dir, text):
                 list1 = list.split("<>")
                 try:
                     plname = list1[5]
-                    if not plname in menu_texts:
+                    if plname not in menu_texts:
                         menu_texts.append(plname)
                 except:
                     pass
@@ -1802,7 +1790,7 @@ def remove_from_list(list, file):
             if len(line) > 0:
                 s = s + line + "\n"
         write_to_file(file, s)
-        if not "song" in file and not "album" in file:
+        if "song" not in file and "album" not in file:
             xbmc.executebuiltin("Container.Refresh")
 
 
@@ -1913,7 +1901,8 @@ def setView(content, viewType):
 def addLink(name, url, iconimage):
     ok = True
     liz = xbmcgui.ListItem(name, iconImage="DefaultVideo.png", thumbnailImage=iconimage)
-    liz.setInfo(type="Audio", infoLabels={"Title": name})
+    tag = liz.getMusicInfoTag()
+    tag.setTitle(name)
     liz.setProperty("fanart_image", audio_fanart)
     ok = xbmcplugin.addDirectoryItem(handle=int(sys.argv[1]), url=url, listitem=liz)
     return ok
@@ -2017,7 +2006,7 @@ def addDir(name, url, mode, iconimage, type):
             contextMenuItems.append(
                 ("[COLOR cyan]Queue Album[/COLOR]", "RunPlugin(%s)" % queue_music)
             )
-        if not "qq" in type1:
+        if "qq" not in type1:
             suffix = ""
             contextMenuItems.append(
                 (
@@ -2038,7 +2027,8 @@ def addDir(name, url, mode, iconimage, type):
     liz = xbmcgui.ListItem(name + suffix)
     liz.setArt({"icon": "DefaultAudio.png", "thumb": iconimage})
     liz.addContextMenuItems(contextMenuItems, replaceItems=False)
-    liz.setInfo(type="Audio", infoLabels={"Title": name})
+    tag = liz.getMusicInfoTag()
+    tag.setTitle(name)
     liz.setProperty("fanart_image", fanart)
     ok = xbmcplugin.addDirectoryItem(
         handle=int(sys.argv[1]), url=u, listitem=liz, isFolder=True
@@ -2159,8 +2149,9 @@ def addDirAudio(name, url, mode, iconimage, songname, artist, album, dur, type):
     liz = xbmcgui.ListItem(name + suffix)
     liz.setArt({"icon": "DefaultAudio.png", "thumb": iconimage})
     liz.addContextMenuItems(contextMenuItems, replaceItems=False)
-    liz.setInfo(type="Audio", infoLabels={"Title": name})
-    if HIDE_FANART == False:
+    tag = liz.getMusicInfoTag()
+    tag.setTitle(name)
+    if not HIDE_FANART:
         liz.setProperty("fanart_image", fanart)
     ok = xbmcplugin.addDirectoryItem(handle=int(sys.argv[1]), url=u, listitem=liz)
     return ok

@@ -511,10 +511,12 @@ def getListItem(
 
     liz = xbmcgui.ListItem(title)
     liz.setArt({"icon": image, "thumb": image})
-    liz.setInfo(
-        "music",
-        {"Title": title, "Artist": artist, "Album": album, "Duration": duration},
-    )
+    tag = liz.getMusicInfoTag()
+    tag.setTitle(title)
+    tag.setArtist(artist)
+    tag.setAlbum(album)
+    if duration:
+        tag.setDuration(int(duration))
     liz.setProperty("mimetype", "audio/mpeg")
     liz.setProperty("fanart_image", fanart)
     liz.setProperty("IsPlayable", isPlayable)
@@ -584,10 +586,12 @@ def play(sys, params):
                 "fanart": image,
             }
         )
-        liz.setInfo(
-            "music",
-            {"Title": title, "Artist": artist, "Album": album, "Duration": duration},
-        )
+        tag = liz.getMusicInfoTag()
+        tag.setTitle(title)
+        tag.setArtist(artist)
+        tag.setAlbum(album)
+        if duration:
+            tag.setDuration(int(duration))
         liz.setProperty("mimetype", "audio/mpeg")
         liz.setProperty("IsPlayable", "true")
 
