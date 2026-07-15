@@ -39,7 +39,9 @@ QUEUE_ALBUMS = settings.default_queue_album()
 DOWNLOAD_LIST = settings.download_list()
 FOLDERSTRUCTURE = settings.folder_structure()
 fanart = xbmcvfs.translatePath(
-    os.path.join("special://home/addons/plugin.audio.mp3streams-remastered", "fanart.jpg")
+    os.path.join(
+        "special://home/addons/plugin.audio.mp3streams-remastered", "fanart.jpg"
+    )
 )
 art = (
     xbmcvfs.translatePath(
@@ -49,19 +51,25 @@ art = (
 )
 artgenre = (
     xbmcvfs.translatePath(
-        os.path.join("special://home/addons/plugin.audio.mp3streams-remastered/art", "genre")
+        os.path.join(
+            "special://home/addons/plugin.audio.mp3streams-remastered/art", "genre"
+        )
     )
     + "/"
 )
 artbillboard = (
     xbmcvfs.translatePath(
-        os.path.join("special://home/addons/plugin.audio.mp3streams-remastered/art", "billboard")
+        os.path.join(
+            "special://home/addons/plugin.audio.mp3streams-remastered/art", "billboard"
+        )
     )
     + "/"
 )
 urllist = xbmcvfs.translatePath(
     os.path.join(
-        "special://home/addons/plugin.audio.mp3streams-remastered", "lists", "mp3url.list"
+        "special://home/addons/plugin.audio.mp3streams-remastered",
+        "lists",
+        "mp3url.list",
     )
 )
 audio_fanart = ""
@@ -1141,8 +1149,17 @@ def play_song(url, name, songname, artist, album, iconimage, dur, clear):
         track = 0
 
     resolved_url, liz = playerMP3.getListItem(
-        songname, artist, album, track, iconimage, dur,
-        url, fanart, "true", True, block=True,
+        songname,
+        artist,
+        album,
+        track,
+        iconimage,
+        dur,
+        url,
+        fanart,
+        "true",
+        True,
+        block=True,
     )
 
     if FOLDERSTRUCTURE == "0":
@@ -1150,23 +1167,27 @@ def play_song(url, name, songname, artist, album, iconimage, dur, clear):
     else:
         stored_path = os.path.join(MUSIC_DIR, artist + " - " + album, songname + ".mp3")
 
-    if os.path.exists(stored_path):
-        resolved_url = stored_path
-        liz.setPath(stored_path)
-
     filename = playerMP3.createFilename(songname, artist, album, url)
     plugin_url = (
         sys.argv[0]
         + "?mode=999"
-        + "&url=" + urllib.parse.quote_plus(url)
-        + "&title=" + urllib.parse.quote_plus(songname)
-        + "&artist=" + urllib.parse.quote_plus(artist)
-        + "&album=" + urllib.parse.quote_plus(album)
-        + "&filename=" + urllib.parse.quote_plus(filename)
-        + "&duration=" + urllib.parse.quote_plus(str(dur or ""))
-        + "&image=" + urllib.parse.quote_plus(iconimage)
+        + "&url="
+        + urllib.parse.quote_plus(url)
+        + "&title="
+        + urllib.parse.quote_plus(songname)
+        + "&artist="
+        + urllib.parse.quote_plus(artist)
+        + "&album="
+        + urllib.parse.quote_plus(album)
+        + "&filename="
+        + urllib.parse.quote_plus(filename)
+        + "&duration="
+        + urllib.parse.quote_plus(str(dur or ""))
+        + "&image="
+        + urllib.parse.quote_plus(iconimage)
     )
-
+    if os.path.exists(stored_path):
+        plugin_url = stored_path
     liz.setPath(plugin_url)
     pl = get_XBMCPlaylist(clear)
     pl.add(plugin_url, liz)
@@ -1251,9 +1272,13 @@ class DownloadMusicThread(Thread):
 
 
 def download_album(url, name, iconimage):
-    nartist = name.split(" - ")[0]
+    if " - " in name:
+        nartist = name.split(" - ")[0]
+        nalbum = name.split(" - ")[1]
+    else:
+        nartist = "Various"
+        nalbum = name
     xbmc.log("nartist = {0}".format(nartist), xbmc.LOGINFO)
-    nalbum = name.split(" - ")[1]
     xbmc.log("nalbum = {0}".format(nalbum), xbmc.LOGINFO)
     if GOLDEN_PATH:
         url = (
@@ -1265,22 +1290,19 @@ def download_album(url, name, iconimage):
         )
     origurl = url
     xbmc.log("origurl = {0}".format(origurl), xbmc.LOGINFO)
-    dialog = xbmcgui.Dialog()
-    check_downloads = os.path.join(MUSIC_DIR, "downloading.txt")
-    xbmc.log("check_downloads = {0}".format(check_downloads), xbmc.LOGINFO)
-    if os.path.exists(check_downloads):
-        dialog.ok(
+    if os.path.exists(download_lock):
+        xbmcgui.Dialog().ok(
             "Album download in progress",
             "Please wait for the current download to finish",
         )
         return
-    playlist = []
+    create_file(MUSIC_DIR, "downloading.txt")
     link = GET_url(url)  # .decode('utf-8')
     match = []
     soup = BeautifulSoup(link, "html.parser")
     xbmc.log("link = {0}".format(link), xbmc.LOGINFO)
     notification(name, "Download started", "3000", iconimage)
-    if "goldenmp3" in url:
+    if "goldenmp3" in origurl:
         table = soup.find("table", class_="title_list")
         rows = table.find_all("tr", itemprop="tracks")
         for row in rows:
@@ -1310,7 +1332,7 @@ def download_album(url, name, iconimage):
     xbmc.log("match = {0}".format(match), xbmc.LOGINFO)
     nSong = len(match)
     count = 0
-    for track, id, songurl, meta, album, artist, songname, dur in match:
+    for track, id, songurl, meta, d1, album, artist, songname, dur in match:
         count += 1
         songname = songname.replace("&amp;", "and")
         if "goldenmp3" in origurl:
@@ -1319,10 +1341,11 @@ def download_album(url, name, iconimage):
             track = str(count)
         artist = artist.replace("&amp;", "and")
         album = album.replace("&amp;", "and")
-        trn = track.replace("track", "")
-        # url = find_url(trn).strip() + id
-        url = "https://listen.musicmp3.ru/" + id  #'http://files.musicmp3.ru/lofi/' + id
-        playlist.append(songname)
+        if "goldenmp3" in origurl:
+            trn = track.replace("track", "")
+        else:
+            trn = d1.replace("track", "")
+        stream_url = "https://listen.musicmp3.ru/" + id
         title = "%s. %s" % (track.replace("track", ""), songname)
         artist_path = create_directory(MUSIC_DIR, artist)
         album_path = create_directory(artist_path, album)
@@ -1334,16 +1357,29 @@ def download_album(url, name, iconimage):
             title,
             ".mp3",
         )
-        download_lock_file = create_file(MUSIC_DIR, "downloading.txt")
         local_filename = album_path + "/" + title + ".mp3"
-        headers = playerMP3.STREAM_HEADERS
-        r = requests.get(url, headers=headers, stream=True)
-        with open(local_filename, "wb") as f:
-            for chunk in r.iter_content(chunk_size=1024):
-                if chunk:
-                    f.write(chunk)
-                    f.flush()
-        # urllib.urlretrieve(url, local_filename)
+        try:
+            r = requests.get(
+                stream_url,
+                headers=playerMP3.STREAM_HEADERS,
+                stream=True,
+                timeout=30,
+            )
+            r.raise_for_status()
+            with open(local_filename, "wb") as f:
+                for chunk in r.iter_content(chunk_size=8192):
+                    if chunk:
+                        f.write(chunk)
+        except requests.HTTPError as e:
+            xbmc.log(
+                "download_album: HTTP %d for %s — %s"
+                % (e.response.status_code, stream_url, e),
+                xbmc.LOGERROR,
+            )
+            continue
+        except Exception as e:
+            xbmc.log("download_album: unexpected error — %s" % e, xbmc.LOGERROR)
+            continue
         text = "%s of %s tracks downloaded" % (trn, nSong)
         notification(artist + " " + album, text, "3000", iconimage)
         add_to_list(list_data, DOWNLOAD_LIST, False)

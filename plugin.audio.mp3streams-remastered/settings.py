@@ -4,7 +4,7 @@ import os
 
 ADDON = xbmcaddon.Addon(id="plugin.audio.mp3streams-remastered")
 DATA_PATH = os.path.join(
-    xbmcvfs.translatePath("special://profile/addon_data/plugin.audio.mp3streams"), ""
+    xbmcvfs.translatePath("special://profile/addon_data/plugin.audio.mp3streams-remastered"), ""
 )
 
 

@@ -1,5 +1,5 @@
 <?xml version='1.0' encoding='UTF-8'?>
-<addons><addon id="repository.oste" name="Oste" version="2.5.2" provider-name="Liutprando08">
+<addons><addon id="repository.oste" name="Oste" version="2.5.3" provider-name="Liutprando08">
   <extension point="xbmc.addon.repository">
     <dir>
       <info compressed="false">https://raw.githubusercontent.com/Liutprando08/oste_repository/main/zips/addons.xml</info>
@@ -14,7 +14,7 @@
     </assets>
     <platform>all</platform>
   </extension>
-</addon><addon id="plugin.video.tubelink" name="tubelink" version="2.0.5" provider-name="Liutprando08">
+</addon><addon id="plugin.video.tubelink" name="tubelink" version="2.0.6" provider-name="Liutprando08">
     <requires>
     <import addon="xbmc.python" version="3.0.0" />
     </requires>
@@ -30,6 +30,23 @@
         <language>en</language>
         <license>GPL v3</license>
     </extension>
+</addon><addon id="plugin.video.onepace" name="One Pace" version="1.0.0" provider-name="One Pace">
+    <requires>
+        <import addon="xbmc.python" version="3.0.0" />
+    </requires>
+    <extension point="xbmc.python.pluginsource" library="main.py">
+        <provides>video</provides>
+    </extension>
+    <extension point="xbmc.addon.metadata">
+        <summary lang="en">One Pace - The Definitive One Piece Viewing Experience</summary>
+        <description lang="en">Watch One Pace, the fan-edited One Piece anime with filler removed, in Kodi.</description>
+        <platform>all</platform>
+        <language>en</language>
+        <license>GPL-3.0</license>
+        <assets>
+          <icon>resources/onepace_logo.png</icon>
+        </assets>
+    </extension>
 </addon><addon id="plugin.audio.mp3streams-remastered" name="MP3 Streams" version="2025.0.1" provider-name="Jon Bovi">
     <requires>
         <import addon="xbmc.python" version="3.0.0" />
@@ -43,6 +60,8 @@
     <extension point="xbmc.service" library="playerMP3.py" start="startup" />
     <extension point="xbmc.addon.metadata">
         <platform>all</platform>
+        <license>GPL-2.0-or-later</license>
+        <url>https://github.com/</url>
         <summary>A music streaming Collection.</summary>
         <description>MP3 Streams Kodi 19+</description>
         <news>2025.0.1 - Fix Billboard Charts, 2022.0.2 - Fix errors loading pages. 2022.0.1 - Small fix, Kodi 20 ready. 2021.0.6 - Fixed issue with hanging  when skipping tracks. 2021.0.4 - Fixed Settings, 2021.0.3 - Bugfixes. Enjoy!</news>

@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+*.pyo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor files
+*.swp
+*.swo
+*~
+*.kate-swp
+.vscode/
+.idea/
+
+# Build artifacts
+*.egg-info/
+dist/
+build/

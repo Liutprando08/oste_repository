@@ -1,0 +1,2 @@
+# Mark vendored yt-dlp library as generated/vendored for GitHub linguist
+plugin.video.tubelink/lib/** linguist-vendored

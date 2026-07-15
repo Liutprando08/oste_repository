@@ -12,6 +12,8 @@
     <extension point="xbmc.service" library="playerMP3.py" start="startup" />
     <extension point="xbmc.addon.metadata">
         <platform>all</platform>
+        <license>GPL-2.0-or-later</license>
+        <url>https://github.com/</url>
         <summary>A music streaming Collection.</summary>
         <description>MP3 Streams Kodi 19+</description>
         <news>2025.0.1 - Fix Billboard Charts, 2022.0.2 - Fix errors loading pages. 2022.0.1 - Small fix, Kodi 20 ready. 2021.0.6 - Fixed issue with hanging  when skipping tracks. 2021.0.4 - Fixed Settings, 2021.0.3 - Bugfixes. Enjoy!</news>
